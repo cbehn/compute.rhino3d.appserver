@@ -1,5 +1,6 @@
 const express = require('express')
 let router = express.Router()
+const definitions = require('../definitions') // Import the definitions module
 
 /**
  * Get a grasshopper definition file
@@ -15,6 +16,25 @@ let router = express.Router()
  * Using a hash keeps the urls hard to find and also the same until a
  * definition is modified. 
  */
+router.get('/:name/info', async function(req, res, next) {
+  try {
+    // 1. Find the full definition data by name
+    let definition = req.app.get('definitions').find(o => o.name === req.params.name)
+    
+    if(!definition)
+      return next(new Error('Definition not found'))
+
+    // 2. Ask Rhino Compute for the inputs/outputs (IO)
+    // 'getParams' is a helper in src/definitions.js that does exactly this!
+    let params = await definitions.getParams(definition.id)
+
+    // 3. Send it to the browser
+    res.json(params)
+    
+  } catch(error) {
+    next(error)
+  }
+})
 router.get('/:id', function(req, res, next) {
   let definition = req.app.get('definitions').find(o => o.id === req.params.id)
   const options = {

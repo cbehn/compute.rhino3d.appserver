@@ -57,7 +57,8 @@
     "node-cache": "^5.1.1",
     "node-fetch": "2.6.7",
     "rhino3dm": "7.15.0",
-    "throng": "4.0.0"
+    "throng": "4.0.0",
+    "multer": "^2.0.2"
   },
   "devDependencies": {
     "eslint": "8.7.0"

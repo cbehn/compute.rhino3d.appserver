@@ -3,6 +3,10 @@ const router = express.Router()
 const compute = require('compute-rhino3d')
 const {performance} = require('perf_hooks')
 
+const multer = require('multer')
+const storage = multer.memoryStorage()
+const upload = multer({ storage: storage })
+
 const NodeCache = require('node-cache')
 const cache = new NodeCache()
 
@@ -42,6 +46,20 @@ function collectParams (req, res, next){
     break
   case 'POST':
     res.locals.params = req.body
+    if (req.file) {
+      // 1. Ensure the 'inputs' bucket exists
+      if (res.locals.params.inputs === undefined) {
+        res.locals.params.inputs = {}
+      }
+
+      // 2. Convert the raw file (Buffer) to a Base64 String
+      // This turns binary data into safe text for Grasshopper
+      const fileAsBase64 = req.file.buffer.toString('base64')
+
+      // 3. Add it to our inputs
+      // CRITICAL: This key 'importFile' must match the component name in Grasshopper!
+      res.locals.params.inputs['importFile'] = fileAsBase64
+    }
     break
   default:
     next()
@@ -193,7 +211,7 @@ function commonSolve (req, res, next){
 }
 
 // Collect middleware functions into a pipeline
-const pipeline = [computeParams, collectParams, checkCache, commonSolve]
+const pipeline = [upload.single('file'), computeParams, collectParams, checkCache, commonSolve]
 
 // Handle different http methods
 router.head('/:definition',pipeline) // do we need HEAD?

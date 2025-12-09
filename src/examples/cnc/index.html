@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>CNC Profiler</title>
+    <style>
+        body { margin: 0; font-family: sans-serif; overflow: hidden; }
+        
+        /* 3D Canvas covers the whole screen */
+        canvas { width: 100%; height: 100%; display: block;}
+        
+        /* The Layout Strategy */
+        #container { position: relative; width: 100vw; height: 100vh; }
+        #canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 0; }
+        
+        /* The Floating Card */
+        #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 1; max-height: 90vh; overflow-y: auto; }
+        .card { background: rgba(255, 255, 255, 0.9); padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 300px; backdrop-filter: blur(5px); }
+        
+        /* Controls */
+        .control-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9em;}
+        input[type=range] { width: 100%; }
+        .val-display { float: right; font-weight: normal; color: #666; }
+        .toggle { cursor: pointer; display: inline-block; padding: 5px 10px; background: #ddd; border-radius: 4px; user-select: none; font-size: 0.8em;}
+        .toggle.active { background: #4CAF50; color: white; }
+
+        /* Download Button */
+        button#downloadBtn { 
+            width: 100%; padding: 10px; font-size: 1em; 
+            background: #2196F3; color: white; border: none; 
+            border-radius: 4px; cursor: pointer; margin-top: 10px;
+        }
+        button#downloadBtn:disabled { background: #ccc; cursor: not-allowed; }
+        #loader { text-align: center; display: none; margin-top: 10px; font-size: 0.9em; color: #666;}
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="canvas-container"></div>
+
+        <div id="ui-layer">
+            <div class="card">
+                <h2 style="margin-top:0">CNC Job Generator</h2>
+                <div id="controls-container">
+                    <p>Loading definition...</p>
+                </div>
+                <div id="loader">Processing... ⚙️</div>
+                <button id="downloadBtn" disabled>Download GCode</button>
+            </div>
+        </div>
+    </div>
+
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.156.1/build/three.module.js",
+                "three/examples/jsm/controls/OrbitControls": "https://unpkg.com/three@0.156.1/examples/jsm/controls/OrbitControls.js",
+                "three/examples/jsm/loaders/3DMLoader": "https://unpkg.com/three@0.156.1/examples/jsm/loaders/3DMLoader.js",
+                "rhino3dm":"https://unpkg.com/rhino3dm@8.0.0-beta/rhino3dm.module.js"
+            }
+        }
+    </script>
+    <script type="module" src="script.js"></script>
+</body>
+</html>
