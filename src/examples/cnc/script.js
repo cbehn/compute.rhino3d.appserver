@@ -77,25 +77,63 @@ async function triggerSolve() {
 }
 
 function handleResponse(data) {
-    if (!data.values || data.values.length < 1) return;
+    // 1. CHECK FOR GLOBAL ERRORS (The missing link!)
+    if (data.errors && data.errors.length > 0) {
+        console.error("Compute Errors:", data.errors);
+        
+        const logBox = document.getElementById('log-content');
+        if (logBox) {
+            logBox.innerText = "⚠️ SERVER ERRORS:\n" + data.errors.join('\n');
+            logBox.style.color = "red"; // Make it visible
+            
+            // Force open the log box
+            const details = document.getElementById('log-container');
+            if (details) details.open = true;
+        }
+        
+        // Even if there are errors, we might have partial values, 
+        // but usually we want to stop here or warn the user.
+        return; 
+    }
 
-    // --- 1. HANDLE G-CODE (Output 0) ---
-    const gcodeBranch = Object.values(data.values[0].InnerTree)[0];
-    gcodeResult = gcodeBranch.map(item => JSON.parse(item.data)).join('\n');
-    
-    downloadBtn.disabled = false;
-    downloadBtn.innerText = "Download GCode";
+    // Reset log box style if no errors
+    const logBox = document.getElementById('log-content');
+    if(logBox) {
+        logBox.style.color = "#333";
+        logBox.innerText = "Solution completed without server errors.";
+    }
 
-    // --- 2. HANDLE GEOMETRY (Output 1 & 2) ---
-    // Clear old geometry
-    scene.traverse(child => {
-        if (child.name === "generated_geo") scene.remove(child);
-    });
+    // 2. SAFETY CHECK: Do we have values?
+    if (!data || !data.values || data.values.length < 1) {
+        if(logBox) logBox.innerText += "\n(But no geometry was returned)";
+        return;
+    }
 
-    // Helper to process a specific output index with a specific color
+    // --- 3. HANDLE G-CODE (Output 0) ---
+    if (data.values[0] && data.values[0].InnerTree) {
+        const gcodeBranch = Object.values(data.values[0].InnerTree)[0];
+        if (gcodeBranch && gcodeBranch.length > 0) {
+            try {
+                gcodeResult = gcodeBranch.map(item => JSON.parse(item.data)).join('\n');
+                downloadBtn.disabled = false;
+                downloadBtn.innerText = "Download GCode";
+            } catch (e) {
+                console.error("Error parsing GCode:", e);
+            }
+        }
+    }
+
+    // --- 4. HANDLE GEOMETRY (Output 1 & 2) ---
+    if (scene) {
+        scene.traverse(child => {
+            if (child.name === "generated_geo") scene.remove(child);
+        });
+    }
+
     const processGeometry = (outputIndex, colorHex) => {
         if (data.values.length <= outputIndex) return;
-        
+        if (!data.values[outputIndex].InnerTree) return;
+
         const branch = Object.values(data.values[outputIndex].InnerTree)[0];
         if (!branch) return;
 
@@ -105,21 +143,38 @@ function handleResponse(data) {
         branch.forEach(item => {
             const rhinoObject = decodeItem(item);
             if (rhinoObject) {
-                // Convert Rhino Geometry to Three.js Geometry
                 const geometry = loader.parse(rhinoObject.toThreejsJSON());
                 const line = new THREE.Line(geometry, material);
-                line.name = "generated_geo"; // Tag it so we can delete it later
-                line.rotation.x = -Math.PI / 2; // Flip to Z-up if needed (ThreeJS is Y-up)
+                line.name = "generated_geo";
+                line.rotation.x = -Math.PI / 2;
                 scene.add(line);
             }
         });
     };
 
-    // Output 1: DXF Lines -> BLACK
-    processGeometry(1, 0x000000);
+    processGeometry(1, 0x000000); // Output 1
+    processGeometry(2, 0xff0000); // Output 2
 
-    // Output 2: Cut Path -> RED
-    processGeometry(2, 0xff0000);
+    // --- 5. HANDLE LOG (Output 3) ---
+    // If we made it this far, we check the standard log output
+    if (data.values.length > 3 && data.values[3].InnerTree) {
+        const logBranch = Object.values(data.values[3].InnerTree)[0];
+
+        if (logBranch && logBranch.length > 0) {
+            const logLines = logBranch.map(item => {
+                try { return JSON.parse(item.data); } 
+                catch (e) { return item.data; }
+            });
+            
+            // Append to whatever status we already wrote
+            logBox.innerText = logLines.join('\n');
+            
+            const details = document.getElementById('log-container');
+            if (details && logBox.innerText.toLowerCase().includes("error")) {
+                details.open = true;
+            }
+        }
+    }
 }
 
 // =========================================================

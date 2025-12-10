@@ -47,6 +47,19 @@
                 </div>
                 <div id="loader">Processing... ⚙️</div>
                 <button id="downloadBtn" disabled>Download GCode</button>
+                <details id="log-container" style="margin-top: 15px; border-top: 1px solid #ddd; padding-top: 10px;">
+                    <summary style="cursor: pointer; font-size: 0.9em; color: #555; user-select: none;">Debug Log</summary>
+                    <div id="log-content" style="
+                        max-height: 150px; 
+                        overflow-y: auto; 
+                        font-family: monospace; 
+                        font-size: 0.8em; 
+                        background: #f9f9f9; 
+                        border: 1px solid #eee;
+                        padding: 8px; 
+                        margin-top: 5px; 
+                        white-space: pre-wrap;">Waiting for calculation...</div>
+                </details>
             </div>
         </div>
     </div>
