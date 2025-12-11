@@ -25,14 +25,7 @@ router.get('/:name/info', async function(req, res, next) {
       return next(new Error('Definition not found'))
 
     // 2. Ask Rhino Compute for the inputs/outputs (IO)
-    // Use the environment variable passed from Docker, or fallback to localhost
-    const hostIp = process.env.HOST_IP || 'localhost';
-    const fullUrl = req.protocol + '://' + hostIp + ':3001';
-    
-    let definitionPath = `${fullUrl}/definition/${definition.id}`
-    
-    // Pass the full URL instead of just the ID so Compute knows where to download it
-    let params = await definitions.getParams(definitionPath)
+    let params = await definitions.getParams(definition.id)
 
     // 3. Send it to the browser
     res.json(params)

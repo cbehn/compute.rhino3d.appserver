@@ -4,7 +4,7 @@ import { Rhino3dmLoader } from 'three/examples/jsm/loaders/3DMLoader'
 import rhino3dm from 'rhino3dm'
 
 // --- CONFIGURATION ---
-const DEFINITION_NAME = 'cncProfiler.gh';
+const DEFINITION_NAME = 'cncProfiler_v2.ghx';
 
 // --- GLOBALS ---
 let inputs = {};

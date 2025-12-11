@@ -157,8 +157,7 @@ function commonSolve (req, res, next){
       }
     }
 
-    const hostIp = process.env.HOST_IP || 'localhost';
-    let fullUrl = req.protocol + '://' + hostIp + ':3001';
+    let fullUrl = req.protocol + '://' + req.get('host')
     let definitionPath = `${fullUrl}/definition/${definition.id}`
     const timePreComputeServerCall = performance.now()
     let computeServerTiming = null
