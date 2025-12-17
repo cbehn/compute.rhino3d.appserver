@@ -25,6 +25,7 @@ router.get('/:name/info', async function(req, res, next) {
       return next(new Error('Definition not found'))
 
     // 2. Ask Rhino Compute for the inputs/outputs (IO)
+
     let params = await definitions.getParams(definition.id)
 
     // 3. Send it to the browser

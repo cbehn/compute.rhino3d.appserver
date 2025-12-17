@@ -42,6 +42,7 @@ app.use('/solve', require('./routes/solve'))
 app.use('/view', require('./routes/template'))
 app.use('/version', require('./routes/version'))
 app.use('/', require('./routes/index'))
+app.use('/files', express.static(__dirname + '/files'));
 
 // ref: https://github.com/expressjs/express/issues/3589
 // remove line when express@^4.17
