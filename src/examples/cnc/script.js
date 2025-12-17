@@ -113,12 +113,38 @@ async function triggerSolve() {
             body: JSON.stringify(requestData)
         });
 
+        // 1. Check if the network request failed (e.g., 500 Error)
+        if (!res.ok) {
+            // Read the text body of the 500 error to see the real reason
+            const errorText = await res.text(); 
+            throw new Error(errorText);
+        }
+
         const data = await res.json();
+
+        // 2. Check if Grasshopper returned a calculation error
+        if (data.values === undefined && data.errors) {
+             throw new Error("Grasshopper Error: " + JSON.stringify(data.errors));
+        }
+
         handleResponse(data);
 
     } catch (err) {
-        console.error(err);
-        downloadBtn.innerText = "Error (Check Console)";
+        console.error("Solve Failed:", err);
+        
+        downloadBtn.innerText = "Error (Check Log)";
+
+        // 3. Display the error in your new Debug Log UI
+        const logContent = document.getElementById('log-content');
+        if (logContent) {
+            logContent.innerHTML = `<div style="color:red; font-weight:bold;">
+                ❌ ERROR: ${err.message}
+            </div>`;
+            // Force the details panel open so the user sees it
+            const logContainer = document.getElementById('log-container');
+            if (logContainer) logContainer.open = true;
+        }
+
     } finally {
         document.getElementById('loader').style.display = 'none';
     }
@@ -151,8 +177,16 @@ function handleResponse(data) {
         if (gcodeBranch && gcodeBranch.length > 0) {
             try {
                 gcodeResult = gcodeBranch.map(item => JSON.parse(item.data)).join('\n');
+                
+                // Enable Button
                 downloadBtn.disabled = false;
                 downloadBtn.innerText = "Download GCode";
+
+                // --- NEW: Display GCode ---
+                const previewBox = document.getElementById('gcode-preview');
+                previewBox.style.display = 'block';
+                previewBox.innerText = gcodeResult; // Show the text!
+
             } catch (e) {
                 console.error("Error parsing GCode:", e);
             }
@@ -337,46 +371,98 @@ downloadBtn.onclick = () => {
 //                  3D VISUALIZATION
 // =========================================================
 
+
 function init3D() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xe0e0e0); 
-    // scene.fog = new THREE.Fog(0xe0e0e0, 50, 200);
-
-    // Setup Camera
+    
+    // Setup Camera (Standard ISO View)
     camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    // Initial ISO View
     camera.position.set(40, 60, 60); 
 
+    // Adjust renderer size
     renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(window.innerWidth - 300, window.innerHeight); 
     renderer.shadowMap.enabled = true;
-    document.getElementById('canvas-container').appendChild(renderer.domElement);
+    
+    const canvasContainer = document.getElementById('canvas-container');
+    canvasContainer.innerHTML = ''; 
+    canvasContainer.appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     
-    // --- WORK AREA ---
-    // 48 x 96 box. Standard CNC axis: X is width, Y is length.
-    // ThreeJS defaults Y Up. Rhino defaults Z Up.
-    // The geometry processing rotates -90 X, putting Rhino XY onto Three XZ.
-    // So we build the work area on the XZ plane.
-    
-    // 1. The Bed (Light Blue Box)
-    const bedGeo = new THREE.BoxGeometry(48, 1, 96);
-    const bedMat = new THREE.MeshLambertMaterial({ 
-        color: 0xadd8e6, 
-        transparent: true, 
-        opacity: 0.8 
-    });
-    const bed = new THREE.Mesh(bedGeo, bedMat);
-    bed.position.y = -0.5; // Top face is at y=0
-    scene.add(bed);
+    // --- 1. COORDINATE SYSTEM FIX ---
+    // Rhino X = Three X (Red)
+    // Rhino Y = Three -Z (Green) -> This makes it go "Up" the screen
+    // Rhino Z = Three Y (Blue)
 
-    // 2. The Outline (Edges)
-    const edges = new THREE.EdgesGeometry(bedGeo);
-    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x4682b4 }));
-    line.position.copy(bed.position);
-    scene.add(line);
+    // --- 2. CUSTOM GRID (6 units margin) ---
+    // Box is 48 wide (X) by 96 tall (Rhino Y / Three -Z)
+    // Grid X: -6 to 54
+    // Grid Z: +6 to -102 (Remember Z is negative!)
+    
+    const gridColor = 0x888888;
+    const points = [];
+
+    // Vertical lines (Scanning along X)
+    for (let x = -6; x <= 54; x += 1) {
+        // Line from Z=6 to Z=-102
+        points.push(new THREE.Vector3(x, 0, 6));
+        points.push(new THREE.Vector3(x, 0, -102));
+    }
+
+    // Horizontal lines (Scanning along Z)
+    for (let z = 6; z >= -102; z -= 1) {
+        // Line from X=-6 to X=54
+        points.push(new THREE.Vector3(-6, 0, z));
+        points.push(new THREE.Vector3(54, 0, z));
+    }
+
+    const gridGeo = new THREE.BufferGeometry().setFromPoints(points);
+    const gridMat = new THREE.LineBasicMaterial({ color: gridColor, opacity: 0.4, transparent: true });
+    const grid = new THREE.LineSegments(gridGeo, gridMat);
+    scene.add(grid);
+
+    // --- 3. WORK AREA BORDER ---
+    // 48 x 96 Rectangle
+    const rectPoints = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(48, 0, 0),    // Right (X)
+        new THREE.Vector3(48, 0, -96),  // Right & Up (-Z)
+        new THREE.Vector3(0, 0, -96),   // Up (-Z)
+        new THREE.Vector3(0, 0, 0)      // Close Loop
+    ];
+    const borderGeo = new THREE.BufferGeometry().setFromPoints(rectPoints);
+    const borderMat = new THREE.LineBasicMaterial({ color: 0x2196F3, linewidth: 2 });
+    const border = new THREE.Line(borderGeo, borderMat);
+    border.position.y = 0.05; // Slightly lift to avoid z-fighting with grid
+    scene.add(border);
+
+    // --- 4. AXIS ARROWS & LABELS ---
+    const origin = new THREE.Vector3(0, 0, 0);
+    const arrowLength = 12;
+    const headLength = 3;
+    const headWidth = 1.5;
+
+    // X-Axis (Red)
+    const dirX = new THREE.Vector3(1, 0, 0);
+    const arrowX = new THREE.ArrowHelper(dirX, origin, arrowLength, 0xff0000, headLength, headWidth);
+    scene.add(arrowX);
+    createLabel("X", new THREE.Vector3(arrowLength + 2, 0, 0), "red");
+
+    // Y-Axis (Rhino Y is Three -Z) (Green)
+    const dirY = new THREE.Vector3(0, 0, -1);
+    const arrowY = new THREE.ArrowHelper(dirY, origin, arrowLength, 0x00ff00, headLength, headWidth);
+    scene.add(arrowY);
+    createLabel("Y", new THREE.Vector3(0, 0, -arrowLength - 2), "green");
+
+    // Z-Axis (Rhino Z is Three Y) (Blue)
+    const dirZ = new THREE.Vector3(0, 1, 0);
+    const arrowZ = new THREE.ArrowHelper(dirZ, origin, arrowLength, 0x0000ff, headLength, headWidth);
+    scene.add(arrowZ);
+    createLabel("Z", new THREE.Vector3(0, arrowLength + 2, 0), "blue");
+
 
     // Lights
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
@@ -389,6 +475,30 @@ function init3D() {
 
     window.addEventListener('resize', onWindowResize, false);
     animate();
+}
+
+/**
+ * Helper to create text labels using a 2D Canvas
+ */
+function createLabel(text, position, colorStr) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    
+    ctx.font = 'Bold 48px Arial';
+    ctx.fillStyle = colorStr;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 32, 32);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture });
+    const sprite = new THREE.Sprite(material);
+    
+    sprite.position.copy(position);
+    sprite.scale.set(5, 5, 1); // Scale the sprite to be visible
+    scene.add(sprite);
 }
 
 function handleViewSnap(view) {

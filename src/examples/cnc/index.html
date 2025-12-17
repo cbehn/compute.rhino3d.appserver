@@ -25,6 +25,7 @@
             display: flex;
             flex-direction: column;
             order: 1;
+            flex-shrink: 0;
         }
 
         h2 { margin-top: 0; font-size: 1.2em; color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; }
@@ -57,6 +58,8 @@
             border: 2px dashed #2196F3; color: #2196F3; background-color: white;
             padding: 15px; border-radius: 8px; font-size: 1em; font-weight: bold;
             width: 100%; cursor: pointer; text-align: center; transition: 0.2s;
+            box-sizing: border-box; /* <--- FIXES CLIPPING */
+            white-space: nowrap;    /* <--- KEEPS TEXT ON ONE LINE */
         }
         .btn-upload:hover { background-color: #e3f2fd; }
         .upload-btn-wrapper input[type=file] {
@@ -94,6 +97,14 @@
             background: #f5f5f5; padding: 5px; border: 1px solid #ddd;
         }
 
+        /* Gcode preview */
+        #gcode-preview {
+            max-height: 150px; overflow-y: auto; font-family: monospace;
+            font-size: 0.7em; background: #fff; padding: 10px; 
+            border: 1px solid #ccc; border-radius: 4px; color: #333;
+            display: none; /* Hidden until generated */
+        }
+
         /* View Controls */
         #view-controls {
             position: absolute; bottom: 20px; right: 20px;
@@ -110,6 +121,7 @@
         .view-btn.iso { grid-column: span 3; background: #ddd; font-weight: bold;}
 
         #loader { text-align: center; margin-top: 20px; font-style: italic; color: #666; display: none; }
+        
 
     </style>
 </head>
@@ -136,14 +148,16 @@
         <div id="canvas-container"></div>
         
         <div id="output-layer">
-            <button id="downloadBtn" disabled>Download GCode</button>
-            
             <div id="log-wrapper">
                 <details id="log-container">
                     <summary>Debug Log</summary>
                     <div id="log-content">Waiting for calculation...</div>
                 </details>
             </div>
+
+            <pre id="gcode-preview"></pre>
+
+            <button id="downloadBtn" disabled>Download GCode</button>
         </div>
 
         <div id="view-controls">

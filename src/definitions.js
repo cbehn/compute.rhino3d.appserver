@@ -13,7 +13,6 @@ function registerDefinitions() {
   let files = getFilesSync(filesDir)
   let definitions = []
 
-  // 1. Identify all unique definition names (ignoring extension)
   const baseNames = new Set()
   files.forEach(file => {
     if (file.endsWith('.gh') || file.endsWith('.ghx')) {
@@ -21,16 +20,11 @@ function registerDefinitions() {
     }
   })
 
-  // 2. Register the best version for each definition
   baseNames.forEach(base => {
     let fileName = null
-    
-    // Prefer .gh (Binary) -> Smaller, faster upload
     if (fs.existsSync(path.join(filesDir, base + '.gh'))) {
       fileName = base + '.gh'
-    } 
-    // Fallback to .ghx (XML) -> Larger, slower
-    else if (fs.existsSync(path.join(filesDir, base + '.ghx'))) {
+    } else if (fs.existsSync(path.join(filesDir, base + '.ghx'))) {
       fileName = base + '.ghx'
     }
 
@@ -50,13 +44,22 @@ function registerDefinitions() {
 }
 
 async function getParams(definitionPath) {
-  
-  // Read the file from disk (fixes the URL/Path confusion)
   const buffer = fs.readFileSync(definitionPath)
+  const algo = buffer.toString('base64')
   
-  // Construct the IO URL
+  // FIX: Match Hops Protocol exactly
+  const requestBody = {
+    "absolutetolerance": 0.01, // Standard Rhino tolerance
+    "angletolerance": 1.0,
+    "modelunits": "Inches",    // or "Millimeters", usually doesn't break IO but good to have
+    "algo": algo,
+    "pointer": "md5_" + md5File.sync(definitionPath), // FIX: Add 'md5_' prefix
+    "cachesolve": false,
+    "values": []
+  }
+
   let url = process.env.RHINO_COMPUTE_URL
-  if (!url.endsWith('/')) url += '/' // Ensure trailing slash
+  if (!url.endsWith('/')) url += '/' 
   url += 'io'
 
   const apiKey = process.env.RHINO_COMPUTE_KEY
@@ -65,11 +68,10 @@ async function getParams(definitionPath) {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/octet-stream',
-        'RhinoComputeKey': apiKey,
-        'Content-Length': buffer.length.toString() // Help server allocate memory
+        'Content-Type': 'application/json',
+        'RhinoComputeKey': apiKey
       },
-      body: buffer
+      body: JSON.stringify(requestBody)
     })
 
     if (!response.ok) {
@@ -78,15 +80,12 @@ async function getParams(definitionPath) {
     }
 
     let result = await response.json()
-    
-    // Format inputs/outputs to camelCase for JS consumption
     result = camelcaseKeys(result, { deep: true })
     
     let inputs = result.inputs === undefined ? result.inputNames : result.inputs
     let outputs = result.outputs === undefined ? result.outputNames : result.outputs
     const description = result.description === undefined ? '' : result.description
 
-    // Determine if we should show a 3D view based on output types
     let view = true
     if (inputs) {
       inputs.forEach(i => {
