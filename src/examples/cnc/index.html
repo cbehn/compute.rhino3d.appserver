@@ -4,63 +4,156 @@
     <meta charset="utf-8">
     <title>CNC Profiler</title>
     <style>
-        body { margin: 0; font-family: sans-serif; overflow: hidden; }
+        body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #f0f0f0; }
         
         /* 3D Canvas covers the whole screen */
         canvas { width: 100%; height: 100%; display: block;}
         
-        /* The Layout Strategy */
-        #container { position: relative; width: 100vw; height: 100vh; }
-        #canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 0; }
+        /* Layout */
+        #container { position: relative; width: 100vw; height: 100vh; display: flex; }
+        #canvas-container { flex-grow: 1; position: relative; z-index: 0; order: 2; }
         
-        /* The Floating Card */
-        #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 1; max-height: 90vh; overflow-y: auto; }
-        .card { background: rgba(255, 255, 255, 0.9); padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 300px; backdrop-filter: blur(5px); }
+        /* Left Panel */
+        #left-panel {
+            width: 300px;
+            background: #ffffff;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            z-index: 10;
+            overflow-y: auto;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            order: 1;
+        }
+
+        h2 { margin-top: 0; font-size: 1.2em; color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; }
         
         /* Controls */
         .control-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9em;}
-        input[type=range] { width: 100%; }
-        .val-display { float: right; font-weight: normal; color: #666; }
-        .toggle { cursor: pointer; display: inline-block; padding: 5px 10px; background: #ddd; border-radius: 4px; user-select: none; font-size: 0.8em;}
+        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.85em; color: #444;}
+        input[type=range], input[type=number], input[type=text] { width: 100%; box-sizing: border-box; }
+        .val-display { float: right; font-weight: normal; color: #666; font-size: 0.9em; }
+        
+        .toggle { 
+            cursor: pointer; display: block; text-align: center; 
+            padding: 8px; background: #ddd; border-radius: 4px; 
+            user-select: none; font-size: 0.85em; font-weight: bold;
+        }
         .toggle.active { background: #4CAF50; color: white; }
 
-        /* Download Button */
-        button#downloadBtn { 
-            width: 100%; padding: 10px; font-size: 1em; 
-            background: #2196F3; color: white; border: none; 
-            border-radius: 4px; cursor: pointer; margin-top: 10px;
+        .coming-soon {
+            padding: 10px; background: #f9f9f9; border: 1px dashed #ccc; 
+            color: #888; text-align: center; font-size: 0.8em; border-radius: 4px;
         }
-        button#downloadBtn:disabled { background: #ccc; cursor: not-allowed; }
-        #loader { text-align: center; display: none; margin-top: 10px; font-size: 0.9em; color: #666;}
+
+        /* File Selector */
+        #file-select-container { margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 20px;}
+        select#definitionSelect { width: 100%; padding: 8px; font-size: 1em; }
+
+        /* Upload Button Special Styling */
+        .upload-btn-wrapper { position: relative; overflow: hidden; display: inline-block; width: 100%; }
+        .btn-upload {
+            border: 2px dashed #2196F3; color: #2196F3; background-color: white;
+            padding: 15px; border-radius: 8px; font-size: 1em; font-weight: bold;
+            width: 100%; cursor: pointer; text-align: center; transition: 0.2s;
+        }
+        .btn-upload:hover { background-color: #e3f2fd; }
+        .upload-btn-wrapper input[type=file] {
+            font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer;
+        }
+
+        /* Top Right Output Area */
+        #output-layer { 
+            position: absolute; top: 20px; right: 20px; 
+            z-index: 20; width: 280px; display: flex; flex-direction: column; gap: 10px; 
+            pointer-events: none; /* Let clicks pass through gaps */
+        }
+        #output-layer > * { pointer-events: auto; }
+
+        button#downloadBtn { 
+            width: 100%; padding: 12px; font-size: 1em; 
+            background: #2196F3; color: white; border: none; 
+            border-radius: 4px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        button#downloadBtn:disabled { background: #999; cursor: not-allowed; }
+
+        /* Log Container */
+        #log-wrapper {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            backdrop-filter: blur(5px);
+            overflow: hidden;
+        }
+        details#log-container { padding: 10px; }
+        summary { cursor: pointer; font-size: 0.9em; font-weight: bold; color: #555; }
+        #log-content {
+            max-height: 200px; overflow-y: auto; font-family: monospace; 
+            font-size: 0.75em; margin-top: 10px; white-space: pre-wrap; 
+            background: #f5f5f5; padding: 5px; border: 1px solid #ddd;
+        }
+
+        /* View Controls */
+        #view-controls {
+            position: absolute; bottom: 20px; right: 20px;
+            background: white; padding: 10px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
+            z-index: 20; width: 120px;
+        }
+        .view-btn {
+            padding: 5px; font-size: 0.7em; cursor: pointer;
+            background: #eee; border: none; border-radius: 3px;
+        }
+        .view-btn:hover { background: #ddd; }
+        .view-btn.iso { grid-column: span 3; background: #ddd; font-weight: bold;}
+
+        #loader { text-align: center; margin-top: 20px; font-style: italic; color: #666; display: none; }
+
     </style>
 </head>
 <body>
-    <div id="container">
-        <div id="canvas-container"></div>
 
-        <div id="ui-layer">
-            <div class="card">
-                <h2 style="margin-top:0">CNC Job Generator</h2>
-                <div id="controls-container">
-                    <p>Loading definition...</p>
-                </div>
-                <div id="loader">Processing... ⚙️</div>
-                <button id="downloadBtn" disabled>Download GCode</button>
-                <details id="log-container" style="margin-top: 15px; border-top: 1px solid #ddd; padding-top: 10px;">
-                    <summary style="cursor: pointer; font-size: 0.9em; color: #555; user-select: none;">Debug Log</summary>
-                    <div id="log-content" style="
-                        max-height: 150px; 
-                        overflow-y: auto; 
-                        font-family: monospace; 
-                        font-size: 0.8em; 
-                        background: #f9f9f9; 
-                        border: 1px solid #eee;
-                        padding: 8px; 
-                        margin-top: 5px; 
-                        white-space: pre-wrap;">Waiting for calculation...</div>
+    <div id="container">
+        <div id="left-panel">
+            <h2>CNC Job Generator</h2>
+            
+            <div id="file-select-container">
+                <label for="definitionSelect">Select Definition:</label>
+                <select id="definitionSelect">
+                    <option value="" disabled selected>Choose a file...</option>
+                </select>
+            </div>
+
+            <div id="controls-container">
+                <p style="color:#888; text-align: center;">Select a definition to begin.</p>
+            </div>
+            
+            <div id="loader">Processing... ⚙️</div>
+        </div>
+
+        <div id="canvas-container"></div>
+        
+        <div id="output-layer">
+            <button id="downloadBtn" disabled>Download GCode</button>
+            
+            <div id="log-wrapper">
+                <details id="log-container">
+                    <summary>Debug Log</summary>
+                    <div id="log-content">Waiting for calculation...</div>
                 </details>
             </div>
+        </div>
+
+        <div id="view-controls">
+            <button class="view-btn iso" onclick="snapView('iso')">ISO</button>
+            <button class="view-btn" onclick="snapView('top')">Top</button>
+            <button class="view-btn" onclick="snapView('front')">Frt</button>
+            <button class="view-btn" onclick="snapView('right')">Rgt</button>
+            <button class="view-btn" onclick="snapView('left')">Lft</button>
+            <button class="view-btn" onclick="snapView('back')">Bck</button>
+            <button class="view-btn" onclick="snapView('bottom')">Btm</button>
         </div>
     </div>
 
@@ -76,5 +169,11 @@
         }
     </script>
     <script type="module" src="script.js"></script>
+    
+    <script>
+        window.snapView = (view) => {
+            window.dispatchEvent(new CustomEvent('snap-view', { detail: view }));
+        };
+    </script>
 </body>
 </html>

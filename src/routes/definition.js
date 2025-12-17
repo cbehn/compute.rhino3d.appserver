@@ -18,19 +18,13 @@ const definitions = require('../definitions') // Import the definitions module
  */
 router.get('/:name/info', async function(req, res, next) {
   try {
-    // 1. Find the full definition data by name
     let definition = req.app.get('definitions').find(o => o.name === req.params.name)
-    
-    if(!definition)
-      return next(new Error('Definition not found'))
+    if(!definition) return next(new Error('Definition not found'))
 
-    // 2. Ask Rhino Compute for the inputs/outputs (IO)
+    // FIX: Pass the local path (definition.path), NOT a URL
+    let params = await definitions.getParams(definition.path)
 
-    let params = await definitions.getParams(definition.id)
-
-    // 3. Send it to the browser
     res.json(params)
-    
   } catch(error) {
     next(error)
   }
