@@ -24,7 +24,7 @@ function formatInputs(inputs) {
     const param = {
       ParamName: key,
       InnerTree: {
-        "{ 0; }": [ 
+        "{0}": [ 
           { 
             type: type, 
             data: data 
