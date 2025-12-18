@@ -36,6 +36,7 @@ app.set('views', './src/views')
 
 // Routes for this app
 app.use('/cnc', express.static(__dirname + '/examples/cnc'))
+app.use('/health', express.static(__dirname + '/examples/health'))
 app.get('/favicon.ico', (req, res) => res.status(200))
 app.use('/definition', require('./routes/definition'))
 app.use('/solve', require('./routes/solve'))
