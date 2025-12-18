@@ -1,23 +1,10 @@
-/**
- * Provide routes for getting descriptive information about the definitions
- * available on this AppServer instance as well as details on the inputs and
- * outputs for a given definition
- * 
- * Routes:
- *  ('/')
- *     Show list of definitions available
- *  ('/:definition')
- *     Get definition input/output details for a definition installed in
- *     this AppServer. These definitions are located in the 'files' directory
- *  ('/definition_description?path=FILEPATH`)
- *     Get definition input/output details for a definition at an absolute
- *     path on the AppServer machine.
- */
 const express = require('express')
 const router = express.Router()
 const compute = require('compute-rhino3d')
 const md5File = require('md5-file')
-const getParams = require('../definitions.js').getParams
+
+// FIX 1: Import the entire definitions module so we can access .registerDefinitions() AND .getParams()
+const definitionsModule = require('../definitions.js') 
 
 /**
  * Set url and apikey used to communicate with a compute server
@@ -35,13 +22,12 @@ function setComputeParams (){
 router.get('/',  function(req, res, next) {
   let definitions = req.app.get('definitions');
 
-  // --- FIX: Auto-Rescan if empty ---
+  // FIX 2: Auto-Rescan if empty using the module we just imported
   if (!definitions || definitions.length === 0) {
     console.log('Definitions list empty. Re-scanning files directory...');
-    definitions = definitionsModule.registerDefinitions(); // Re-run the scan
-    req.app.set('definitions', definitions); // Update the app memory
+    definitions = definitionsModule.registerDefinitions(); 
+    req.app.set('definitions', definitions); 
   }
-  // --------------------------------
 
   let responseList = []
   definitions.forEach( def => {
@@ -64,7 +50,8 @@ function describeDefinition(definition, req, res, next){
     let fullUrl = req.protocol + '://' + req.get('host')
     let definitionPath = `${fullUrl}/definition/${definition.id}`
 
-    getParams(definitionPath).then(data => {
+    // FIX 3: Update this call to use the module variable
+    definitionsModule.getParams(definitionPath).then(data => {
       // cache
       definition.description = data.description
       definition.inputs = data.inputs
