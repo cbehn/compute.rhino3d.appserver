@@ -14,6 +14,25 @@ const container = document.getElementById('controls-container');
 const downloadBtn = document.getElementById('downloadBtn');
 const definitionSelect = document.getElementById('definitionSelect');
 
+// Inject CSS to remove number input arrows (spinners)
+const style = document.createElement('style');
+style.innerHTML = `
+    .val-display-input::-webkit-outer-spin-button,
+    .val-display-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    .val-display-input {
+        -moz-appearance: textfield;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 2px 5px;
+        text-align: right;
+        font-family: monospace;
+    }
+`;
+document.head.appendChild(style);
+
 init();
 
 async function init() {
@@ -74,7 +93,12 @@ async function loadDefinition(name) {
             return 0;
         });
 
+        // 1. Create controls and populate initial 'inputs' object
         sortedInputs.forEach(param => createControl(param));
+
+        // 2. Automatically trigger first solve if a DXF isn't required or is already present
+        triggerSolve();
+
     } catch (err) {
         container.innerHTML = `<p style="color:red">Error: ${err.message}</p>`;
         console.error(err);
@@ -84,8 +108,12 @@ async function loadDefinition(name) {
 async function triggerSolve() {
     if (!currentDefinition) return;
 
-    const dxfInput = document.querySelector('input[type="file"]');
-    if (dxfInput && !inputs['b64DXF']) return;
+    // Check if b64DXF is required but missing
+    const isDxfRequired = document.querySelector('input[type="file"]') !== null;
+    if (isDxfRequired && !inputs['b64DXF']) {
+        console.log("Waiting for DXF upload before solving...");
+        return;
+    }
 
     document.getElementById('loader').style.display = 'block';
     downloadBtn.disabled = true;
@@ -265,49 +293,67 @@ function createControl(param) {
         const label = document.createElement('label');
         label.innerText = param.name; 
         wrapper.appendChild(label);
-        const hasMinMax = (param.minimum !== null && param.maximum !== null);
+
         const isInt = (param.paramType === 'Integer');
-        const input = document.createElement('input');
+        const defaultValue = param.default !== null ? param.default : 0;
+
+        // Numeric input box (already populated, no arrows)
+        const valInput = document.createElement('input');
+        valInput.type = 'number';
+        valInput.className = 'val-display-input';
+        valInput.style.float = 'right';
+        valInput.style.width = '70px';
+        valInput.step = isInt ? 1 : 'any'; 
+        valInput.value = defaultValue; 
+        label.appendChild(valInput);
+
+        const hasMinMax = (param.minimum !== null && param.maximum !== null);
+        const slider = document.createElement('input');
+        
         if (hasMinMax) {
-            input.type = 'range';
-            input.min = param.minimum;
-            input.max = param.maximum;
-            input.step = isInt ? 1 : 0.1;
-            input.value = param.default !== null ? param.default : param.minimum;
-            const valDisplay = document.createElement('span');
-            valDisplay.className = 'val-display';
-            valDisplay.innerText = input.value;
-            label.appendChild(valDisplay);
-            input.addEventListener('input', (e) => {
-                valDisplay.innerText = e.target.value;
+            slider.type = 'range';
+            slider.min = param.minimum;
+            slider.max = param.maximum;
+            slider.step = isInt ? 1 : 0.001; 
+            slider.value = defaultValue;
+
+            slider.addEventListener('input', (e) => {
+                valInput.value = e.target.value;
                 inputs[param.name] = Number(e.target.value);
             });
-            input.addEventListener('mouseup', triggerSolve);
-        } else {
-            input.type = 'number';
-            input.step = isInt ? 1 : 0.01;
-            input.value = param.default !== null ? param.default : 0;
-            input.addEventListener('change', (e) => {
-                inputs[param.name] = Number(e.target.value);
-                triggerSolve();
-            });
+            slider.addEventListener('mouseup', triggerSolve);
+            wrapper.appendChild(slider);
         }
-        inputs[param.name] = Number(input.value);
-        wrapper.appendChild(input);
+
+        valInput.addEventListener('change', (e) => {
+            const val = Number(e.target.value);
+            inputs[param.name] = val;
+            if (hasMinMax) slider.value = val;
+            triggerSolve();
+        });
+
+        // Initialize state
+        inputs[param.name] = Number(defaultValue);
+
     } else if (param.paramType === 'Boolean') {
         const label = document.createElement('label');
         label.innerText = param.name;
         wrapper.appendChild(label);
         const toggle = document.createElement('div');
         toggle.className = 'toggle';
-        toggle.innerText = 'OFF';
+        
+        const defaultState = param.default === true;
+        inputs[param.name] = defaultState;
+        
+        toggle.innerText = defaultState ? 'ON' : 'OFF';
+        if (defaultState) toggle.classList.add('active');
+
         toggle.onclick = () => {
             inputs[param.name] = !inputs[param.name];
             toggle.classList.toggle('active');
             toggle.innerText = inputs[param.name] ? 'ON' : 'OFF';
             triggerSolve();
         };
-        inputs[param.name] = false; 
         wrapper.appendChild(toggle);
     } else {
         const label = document.createElement('label');
@@ -338,11 +384,10 @@ function init3D() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xe0e0e0); 
     
-    // --- Orthographic Camera Setup ---
     const width = window.innerWidth - 300;
     const height = window.innerHeight;
     const aspect = width / height;
-    const viewSize = 110; // Sets the "zoom" or visible units
+    const viewSize = 110; 
 
     camera = new THREE.OrthographicCamera(
         -viewSize * aspect / 2, 
@@ -353,7 +398,6 @@ function init3D() {
         2000
     );
 
-    // Initial position for parallel projection
     camera.position.set(60, 100, 60); 
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -365,6 +409,12 @@ function init3D() {
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+
+    controls.mouseButtons = {
+        LEFT: THREE.MOUSE.PAN,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.ROTATE
+    };
     
     const gridColor = 0x888888;
     const points = [];
@@ -375,6 +425,7 @@ function init3D() {
     const gridMat = new THREE.LineBasicMaterial({ color: gridColor, opacity: 0.4, transparent: true });
     scene.add(new THREE.LineSegments(gridGeo, gridMat));
 
+    // Thicker Work Area Border
     const rectPoints = [
         new THREE.Vector3(0, 0, 0),
         new THREE.Vector3(48, 0, 0),
@@ -383,7 +434,7 @@ function init3D() {
         new THREE.Vector3(0, 0, 0)
     ];
     const borderGeo = new THREE.BufferGeometry().setFromPoints(rectPoints);
-    const border = new THREE.Line(borderGeo, new THREE.LineBasicMaterial({ color: 0x2196F3 }));
+    const border = new THREE.Line(borderGeo, new THREE.LineBasicMaterial({ color: 0x2196F3, linewidth: 5 }));
     border.position.y = 0.05;
     scene.add(border);
 
@@ -407,7 +458,6 @@ function onWindowResize() {
     const aspect = width / height;
     const viewSize = 110;
 
-    // Update Orthographic Frustum
     camera.left = -viewSize * aspect / 2;
     camera.right = viewSize * aspect / 2;
     camera.top = viewSize / 2;
@@ -432,7 +482,7 @@ function decodeItem(item) {
 }
 
 function handleViewSnap(view) {
-    const dist = 500; // Far distance for orthographic alignment
+    const dist = 500; 
     const center = new THREE.Vector3(24, 0, -48); 
     
     switch(view) {
