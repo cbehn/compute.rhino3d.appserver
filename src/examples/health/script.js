@@ -51,27 +51,32 @@ async function runTests() {
     // --- 2. FILES LIST ---
     setStatus('card-files', 'wait', 'Fetching...');
     try {
-        const res = await fetch('/api/health/files');
-        const files = await res.json();
+        // CHANGED: Fetch from root ('/') to match CNC page logic
+        const res = await fetch('/');
+        const definitions = await res.json();
         
         const select = document.getElementById('file-select');
         select.innerHTML = '';
         
-        if (files.length > 0) {
-            files.forEach(f => {
+        // Filter: Match CNC logic (check extensions)
+        const validFiles = definitions.filter(def => def.name.endsWith('.gh') || def.name.endsWith('.ghx'));
+
+        if (validFiles.length > 0) {
+            validFiles.forEach(def => {
                 const opt = document.createElement('option');
-                opt.value = f;
-                opt.innerText = f;
+                // Use def.name because the endpoint returns objects: { name: "file.gh" }
+                opt.value = def.name;
+                opt.innerText = def.name;
                 select.appendChild(opt);
             });
-            setStatus('card-files', 'pass', 'Found Files', `${files.length} definitions found.`);
+            setStatus('card-files', 'pass', 'Found Files', `${validFiles.length} definitions found.`);
             select.disabled = false;
             document.getElementById('btn-load-interface').disabled = false;
             
             // Auto-trigger interface test for first file
-            testInterface(files[0]);
+            testInterface(validFiles[0].name);
         } else {
-            setStatus('card-files', 'wait', 'No Files', 'Directory is empty or path incorrect.');
+            setStatus('card-files', 'wait', 'No Files', 'No matching .gh/.ghx definitions found.');
         }
     } catch (e) {
         setStatus('card-files', 'fail', 'Error', e.message);
