@@ -1,10 +1,24 @@
+/**
+ * Provide routes for getting descriptive information about the definitions
+ * available on this AppServer instance as well as details on the inputs and
+ * outputs for a given definition
+ * * Routes:
+ * ('/')
+ * Show list of definitions available
+ * ('/:definition')
+ * Get definition input/output details for a definition installed in
+ * this AppServer. These definitions are located in the 'files' directory
+ * ('/definition_description?path=FILEPATH`)
+ * Get definition input/output details for a definition at an absolute
+ * path on the AppServer machine.
+ */
 const express = require('express')
 const router = express.Router()
 const compute = require('compute-rhino3d')
 const md5File = require('md5-file')
 
-// FIX 1: Import the entire definitions module so we can access .registerDefinitions() AND .getParams()
-const definitionsModule = require('../definitions.js') 
+// FIX: Import registerDefinitions so we can use it below
+const { getParams, registerDefinitions } = require('../definitions.js')
 
 /**
  * Set url and apikey used to communicate with a compute server
@@ -22,17 +36,21 @@ function setComputeParams (){
 router.get('/',  function(req, res, next) {
   let definitions = req.app.get('definitions');
 
-  // FIX 2: Auto-Rescan if empty using the module we just imported
+  // --- FIX: Auto-Rescan if empty ---
   if (!definitions || definitions.length === 0) {
     console.log('Definitions list empty. Re-scanning files directory...');
-    definitions = definitionsModule.registerDefinitions(); 
-    req.app.set('definitions', definitions); 
+    // FIX: Call the function directly (it was previously undefined as definitionsModule)
+    definitions = registerDefinitions(); 
+    req.app.set('definitions', definitions); // Update the app memory
   }
+  // --------------------------------
 
   let responseList = []
-  definitions.forEach( def => {
-    responseList.push({name: def.name})
-  })
+  if (definitions) {
+      definitions.forEach( def => {
+        responseList.push({name: def.name})
+      })
+  }
 
   res.setHeader('Content-Type', 'application/json')
   res.send(JSON.stringify(responseList))
@@ -50,8 +68,7 @@ function describeDefinition(definition, req, res, next){
     let fullUrl = req.protocol + '://' + req.get('host')
     let definitionPath = `${fullUrl}/definition/${definition.id}`
 
-    // FIX 3: Update this call to use the module variable
-    definitionsModule.getParams(definitionPath).then(data => {
+    getParams(definitionPath).then(data => {
       // cache
       definition.description = data.description
       definition.inputs = data.inputs
