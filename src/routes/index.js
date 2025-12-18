@@ -33,13 +33,23 @@ function setComputeParams (){
  * used to call '/:definition_name` for details about a specific definition
  */
 router.get('/',  function(req, res, next) {
-  let definitions = []
-  req.app.get('definitions').forEach( def => {
-    definitions.push({name: def.name})
+  let definitions = req.app.get('definitions');
+
+  // --- FIX: Auto-Rescan if empty ---
+  if (!definitions || definitions.length === 0) {
+    console.log('Definitions list empty. Re-scanning files directory...');
+    definitions = definitionsModule.registerDefinitions(); // Re-run the scan
+    req.app.set('definitions', definitions); // Update the app memory
+  }
+  // --------------------------------
+
+  let responseList = []
+  definitions.forEach( def => {
+    responseList.push({name: def.name})
   })
 
   res.setHeader('Content-Type', 'application/json')
-  res.send(JSON.stringify(definitions))
+  res.send(JSON.stringify(responseList))
 })
 
 function describeDefinition(definition, req, res, next){

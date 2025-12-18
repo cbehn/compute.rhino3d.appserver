@@ -8,10 +8,22 @@ function getFilesSync(dir) {
   return fs.readdirSync(dir)
 }
 
+
 function registerDefinitions() {
   const filesDir = path.join(__dirname, 'files/')
+  console.log('--- DEBUG: Definition Scanner ---');
+  console.log('Looking for files in:', filesDir);
+
+  if (!fs.existsSync(filesDir)) {
+    console.error('ERROR: Files directory not found at:', filesDir);
+    return [];
+  }
+
   let files = getFilesSync(filesDir)
+  console.log('Raw files found:', files);
+
   let definitions = []
+  // ... existing logic to populate definitions ...
 
   const baseNames = new Set()
   files.forEach(file => {
@@ -21,6 +33,7 @@ function registerDefinitions() {
   })
 
   baseNames.forEach(base => {
+    // ... existing loop logic ...
     let fileName = null
     if (fs.existsSync(path.join(filesDir, base + '.gh'))) {
       fileName = base + '.gh'
@@ -39,6 +52,9 @@ function registerDefinitions() {
       })
     }
   })
+
+  console.log('Registered definitions:', definitions);
+  console.log('---------------------------------');
 
   return definitions
 }

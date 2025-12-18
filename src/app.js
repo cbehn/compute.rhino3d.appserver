@@ -40,20 +40,7 @@ app.use('/cnc', express.static(__dirname + '/examples/cnc'))
 app.use('/health', express.static(__dirname + '/examples/health'))
 app.get('/favicon.ico', (req, res) => res.status(200))
 app.use('/definition', require('./routes/definition'))
-app.use('/solve', require('./routes/solve'))
-app.use('/view', require('./routes/template'))
-app.use('/version', require('./routes/version'))
-app.use('/', require('./routes/index'))
-app.use('/files', express.static(__dirname + '/files'));
 
-// ref: https://github.com/expressjs/express/issues/3589
-// remove line when express@^4.17
-express.static.mime.types["wasm"] = "application/wasm";
-
-// catch 404 and forward to error handler
-app.use(function(req, res, next) {
-  next(createError(404))
-})
 // --- HEALTH CHECK API ---
 // Add this to src/app.js to support the health panel
 
@@ -119,6 +106,22 @@ app.post('/api/health/test-hops', async (req, res) => {
     res.json({ status: 'fail', message: 'Error reading simulation files: ' + err.message });
   }
 });
+
+
+app.use('/solve', require('./routes/solve'))
+app.use('/view', require('./routes/template'))
+app.use('/version', require('./routes/version'))
+app.use('/', require('./routes/index'))
+app.use('/files', express.static(__dirname + '/files'));
+
+// ref: https://github.com/expressjs/express/issues/3589
+// remove line when express@^4.17
+express.static.mime.types["wasm"] = "application/wasm";
+
+// catch 404 and forward to error handler
+app.use(function(req, res, next) {
+  next(createError(404))
+})
 
 // error handler
 app.use(function(err, req, res, next) {
