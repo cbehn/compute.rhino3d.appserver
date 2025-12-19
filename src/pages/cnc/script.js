@@ -36,6 +36,48 @@ document.head.appendChild(style);
 init();
 
 async function init() {
+    
+    // --- NEW: Wake Up & Health Check Logic ---
+    const overlay = document.getElementById('startup-overlay');
+    const statusText = document.getElementById('startup-status');
+    
+    try {
+        // 1. Send Wake Up Command
+        statusText.innerText = "Waking up Compute Server... (This may take 1-2 mins)";
+        console.log("Sending wakeup command...");
+        // We catch errors here so the UI doesn't crash if the wakeup endpoint fails (e.g. invalid creds)
+        fetch('/wakeup', { method: 'POST' }).catch(e => console.error("Wakeup trigger failed:", e));
+
+        // 2. Poll Health Check
+        let isHealthy = false;
+        while (!isHealthy) {
+            try {
+                const res = await fetch('/healthcheck');
+                if (res.ok) {
+                    isHealthy = true;
+                } else {
+                    const text = await res.text();
+                    console.log("Waiting for healthy response...", text);
+                    statusText.innerText = `Starting Compute... (${res.status})`;
+                }
+            } catch (err) {
+                console.log("Health check connection failed, retrying...");
+            }
+
+            if (!isHealthy) {
+                // Wait 2 seconds before retrying
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+    } catch (err) {
+        statusText.innerText = "Error: " + err.message;
+        return; // Stop execution
+    }
+
+    // 3. Server is ready, hide overlay
+    overlay.style.display = 'none';
+    // ----------------------------------------
+
     // Load Rhino3dm
     rhino = await rhino3dm();
     console.log('Rhino3dm loaded.');
