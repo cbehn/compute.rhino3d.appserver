@@ -121,7 +121,7 @@ app.set('views', './src/views')
 // Routes for this app
 app.use('/cnc', express.static(__dirname + '/pages/cnc'))
 app.use('/health', express.static(__dirname + '/pages/health'))
-app.get('/favicon.ico', (req, res) => res.status(200))
+app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, 'files', 'favicon.ico')))
 app.use('/definition', require('./routes/definition'))
 
 // --- NEW: Proxy Healthcheck to Compute Server ---
