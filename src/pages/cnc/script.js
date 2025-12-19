@@ -9,29 +9,28 @@ let gcodeResult = null;
 let scene, camera, renderer, controls;
 let rhino;
 
+// State
+let liveCompute = false;
+let defaultDxfB64 = null;
+
+// Modal State
+let activeParamName = null;
+let activeDisplayEl = null;
+let activeSliderEl = null;
+
 // --- SETUP ---
 const container = document.getElementById('controls-container');
 const downloadBtn = document.getElementById('downloadBtn');
 const definitionSelect = document.getElementById('definitionSelect');
+const computeBtn = document.getElementById('computeBtn');
+const liveComputeToggle = document.getElementById('liveComputeToggle');
 
-// Inject CSS to remove number input arrows (spinners)
-const style = document.createElement('style');
-style.innerHTML = `
-    .val-display-input::-webkit-outer-spin-button,
-    .val-display-input::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-    .val-display-input {
-        -moz-appearance: textfield;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        padding: 2px 5px;
-        text-align: right;
-        font-family: monospace;
-    }
-`;
-document.head.appendChild(style);
+// Modal Elements
+const valueModal = document.getElementById('value-modal');
+const modalTitle = document.getElementById('modalTitle');
+const modalInput = document.getElementById('modalInput');
+const modalSaveBtn = document.getElementById('modalSaveBtn');
+const modalCancelBtn = document.getElementById('modalCancelBtn');
 
 init();
 
@@ -42,10 +41,22 @@ async function init() {
     const statusText = document.getElementById('startup-status');
     
     try {
+        // 0. Fetch Template DXF (default) in background
+        fetch('files/Template.dxf')
+            .then(r => r.blob())
+            .then(blob => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    defaultDxfB64 = reader.result.split(',')[1];
+                    console.log("Template.dxf loaded internally.");
+                };
+                reader.readAsDataURL(blob);
+            })
+            .catch(e => console.log("No Template.dxf found at files/Template.dxf"));
+
         // 1. Send Wake Up Command
         statusText.innerText = "Waking up Compute Server... (This may take 1-2 mins)";
         console.log("Sending wakeup command...");
-        // We catch errors here so the UI doesn't crash if the wakeup endpoint fails (e.g. invalid creds)
         fetch('/wakeup', { method: 'POST' }).catch(e => console.error("Wakeup trigger failed:", e));
 
         // 2. Poll Health Check
@@ -109,6 +120,46 @@ async function init() {
     window.addEventListener('snap-view', (e) => {
         handleViewSnap(e.detail);
     });
+
+    // --- Compute Controls Events ---
+    computeBtn.addEventListener('click', () => {
+        triggerSolve();
+    });
+
+    liveComputeToggle.addEventListener('change', (e) => {
+        liveCompute = e.target.checked;
+        if (liveCompute) {
+            triggerSolve(); // Sync when enabling
+        }
+    });
+
+    // --- Modal Events ---
+    modalCancelBtn.addEventListener('click', () => {
+        valueModal.style.display = 'none';
+    });
+
+    modalSaveBtn.addEventListener('click', () => {
+        const newVal = Number(modalInput.value);
+        if (activeParamName) {
+            inputs[activeParamName] = newVal;
+            
+            // Update Text Display
+            if (activeDisplayEl) {
+                activeDisplayEl.innerText = newVal;
+            }
+            
+            // Update Slider if exists
+            if (activeSliderEl) {
+                activeSliderEl.value = newVal;
+            }
+
+            // Trigger Solve if Live or Manual (acting as update)
+            if (liveCompute) {
+                triggerSolve();
+            }
+        }
+        valueModal.style.display = 'none';
+    });
 }
 
 // =========================================================
@@ -138,8 +189,16 @@ async function loadDefinition(name) {
         // 1. Create controls and populate initial 'inputs' object
         sortedInputs.forEach(param => createControl(param));
 
-        // 2. Automatically trigger first solve if a DXF isn't required or is already present
-        triggerSolve();
+        // 2. Pre-load default DXF if this definition requires a DXF and we have a default
+        if (inputs.hasOwnProperty('b64DXF') && !inputs['b64DXF'] && defaultDxfB64) {
+            inputs['b64DXF'] = defaultDxfB64;
+            console.log("Used Template.dxf for initial inputs");
+        }
+
+        // 3. Automatically trigger first solve (Always solve once on load)
+        setTimeout(() => {
+            triggerSolve();
+        }, 100);
 
     } catch (err) {
         container.innerHTML = `<p style="color:red">Error: ${err.message}</p>`;
@@ -151,8 +210,7 @@ async function triggerSolve() {
     if (!currentDefinition) return;
 
     // Check if b64DXF is required but missing
-    const isDxfRequired = document.querySelector('input[type="file"]') !== null;
-    if (isDxfRequired && !inputs['b64DXF']) {
+    if (inputs.hasOwnProperty('b64DXF') && !inputs['b64DXF']) {
         console.log("Waiting for DXF upload before solving...");
         return;
     }
@@ -324,35 +382,60 @@ function createControl(param) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 inputs[param.name] = e.target.result.split(',')[1];
-                triggerSolve();
+                if(liveCompute) triggerSolve();
             };
             reader.readAsDataURL(file);
         });
+        
+        inputs[param.name] = null;
+        
         uploadWrapper.appendChild(btn);
         uploadWrapper.appendChild(fileInput);
         wrapper.appendChild(uploadWrapper);
+
     } else if (param.paramType === 'Integer' || param.paramType === 'Number') {
         const label = document.createElement('label');
         label.innerText = param.name; 
         wrapper.appendChild(label);
 
         const isInt = (param.paramType === 'Integer');
-        const defaultValue = param.default !== null ? param.default : 0;
+        
+        // --- Robust Default Value Logic ---
+        let rawDef = param.default;
+        
+        // 1. Handle missing, null, or empty string
+        if (rawDef === undefined || rawDef === null || rawDef === '') {
+            rawDef = 0.01;
+        }
+        
+        // 2. Convert to Number
+        let defaultValue = Number(rawDef);
+        
+        // 3. Handle NaN (e.g. if default was a non-numeric string)
+        if (Number.isNaN(defaultValue)) {
+            defaultValue = 0.01;
+        }
 
-        // Numeric input box (already populated, no arrows)
-        const valInput = document.createElement('input');
-        valInput.type = 'number';
-        valInput.className = 'val-display-input';
-        valInput.style.float = 'right';
-        valInput.style.width = '70px';
-        valInput.step = isInt ? 1 : 'any'; 
-        valInput.value = defaultValue; 
-        label.appendChild(valInput);
+        // 4. If Integer, ensure clean int
+        if (isInt) {
+            defaultValue = Math.round(defaultValue);
+            // If checking specifically for 0-based issue, 0 is fine.
+        }
+        
+        // Store immediately so compute doesn't fail
+        inputs[param.name] = defaultValue;
+
+        // Static Text Display (Clickable)
+        const valDisplay = document.createElement('div');
+        valDisplay.className = 'val-display-static';
+        valDisplay.innerText = defaultValue;
+        label.appendChild(valDisplay);
 
         const hasMinMax = (param.minimum !== null && param.maximum !== null);
-        const slider = document.createElement('input');
-        
+        let slider = null;
+
         if (hasMinMax) {
+            slider = document.createElement('input');
             slider.type = 'range';
             slider.min = param.minimum;
             slider.max = param.maximum;
@@ -360,22 +443,29 @@ function createControl(param) {
             slider.value = defaultValue;
 
             slider.addEventListener('input', (e) => {
-                valInput.value = e.target.value;
-                inputs[param.name] = Number(e.target.value);
+                const val = Number(e.target.value);
+                valDisplay.innerText = val; // Live update text
+                inputs[param.name] = val;
             });
-            slider.addEventListener('mouseup', triggerSolve);
+            slider.addEventListener('mouseup', () => {
+                if (liveCompute) triggerSolve();
+            });
             wrapper.appendChild(slider);
         }
 
-        valInput.addEventListener('change', (e) => {
-            const val = Number(e.target.value);
-            inputs[param.name] = val;
-            if (hasMinMax) slider.value = val;
-            triggerSolve();
+        // Click event to open Modal
+        valDisplay.addEventListener('click', () => {
+            activeParamName = param.name;
+            activeDisplayEl = valDisplay;
+            activeSliderEl = slider;
+            
+            modalTitle.innerText = `Set ${param.name}`;
+            modalInput.value = inputs[param.name]; // Load current
+            modalInput.step = isInt ? 1 : 'any';
+            
+            valueModal.style.display = 'flex';
+            modalInput.focus();
         });
-
-        // Initialize state
-        inputs[param.name] = Number(defaultValue);
 
     } else if (param.paramType === 'Boolean') {
         const label = document.createElement('label');
@@ -394,7 +484,7 @@ function createControl(param) {
             inputs[param.name] = !inputs[param.name];
             toggle.classList.toggle('active');
             toggle.innerText = inputs[param.name] ? 'ON' : 'OFF';
-            triggerSolve();
+            if (liveCompute) triggerSolve();
         };
         wrapper.appendChild(toggle);
     } else {
@@ -536,6 +626,15 @@ function handleViewSnap(view) {
             break;
         case 'right': 
             camera.position.set(dist, 0, -48); 
+            break;
+        case 'left':
+            camera.position.set(-dist, 0, -48);
+            break;
+        case 'back':
+            camera.position.set(24, 0, -dist);
+            break;
+        case 'bottom':
+            camera.position.set(24, -dist, -48);
             break;
         case 'iso': 
         default: 
