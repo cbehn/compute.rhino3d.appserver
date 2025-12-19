@@ -6,6 +6,8 @@ const cors = require('cors')
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch'); 
+const { ComputeManagementClient } = require("@azure/arm-compute");
+const { DefaultAzureCredential } = require("@azure/identity");
 
 // create express web server app
 const app = express()
@@ -28,12 +30,97 @@ if (!process.env.RHINO_COMPUTE_URL)
 
 console.log('RHINO_COMPUTE_URL: ' + process.env.RHINO_COMPUTE_URL)
 
+// =============================================================================
+//   AZURE COMPUTE POWER MANAGEMENT & IDLE SHUTDOWN
+// =============================================================================
+
+const AZURE_SUB_ID = process.env.AZURE_SUBSCRIPTION_ID;
+const AZURE_RG = process.env.AZURE_RESOURCE_GROUP;
+const AZURE_VM = process.env.AZURE_VM_NAME;
+
+// Track last activity time (default to now so we don't shutdown immediately on boot)
+let lastActivity = Date.now();
+let isVmActionInProgress = false;
+
+// Middleware to update last activity on solve requests
+app.use('/solve', (req, res, next) => {
+    lastActivity = Date.now();
+    res.on('finish', () => { lastActivity = Date.now(); });
+    next();
+});
+
+// Helper to get Azure Client
+function getComputeClient() {
+    if (!AZURE_SUB_ID || !AZURE_RG || !AZURE_VM) return null;
+    const credential = new DefaultAzureCredential();
+    return new ComputeManagementClient(credential, AZURE_SUB_ID);
+}
+
+// Route to manually wake up the VM
+app.post('/wakeup', async (req, res) => {
+    const client = getComputeClient();
+    if (!client) {
+        return res.status(500).json({ error: "Azure environment variables not set." });
+    }
+    
+    // Avoid spamming start commands
+    if (isVmActionInProgress) {
+        return res.status(202).json({ message: "VM action already in progress." });
+    }
+
+    try {
+        isVmActionInProgress = true;
+        console.log(`Starting Azure VM: ${AZURE_VM}...`);
+        // We use beginStart but don't wait for completion so the UI can poll health check
+        await client.virtualMachines.beginStart(AZURE_RG, AZURE_VM);
+        res.json({ message: "Start command sent." });
+    } catch (err) {
+        console.error("Failed to start VM:", err);
+        res.status(500).json({ error: err.message });
+    } finally {
+        isVmActionInProgress = false;
+        // Reset idle timer so we don't shut down immediately after waking
+        lastActivity = Date.now();
+    }
+});
+
+// IDLE CHECKER (Runs every minute)
+// Shuts down VM if idle for > 30 mins
+setInterval(async () => {
+    const IDLE_LIMIT = 30 * 60 * 1000; // 30 minutes
+    const timeSinceActive = Date.now() - lastActivity;
+
+    if (timeSinceActive > IDLE_LIMIT && !isVmActionInProgress) {
+        const client = getComputeClient();
+        if (client) {
+            try {
+                // Check status first to avoid errors if already stopped
+                const instanceView = await client.virtualMachines.instanceView(AZURE_RG, AZURE_VM);
+                const isRunning = instanceView.statuses.some(s => s.code && s.code.includes("PowerState/running"));
+
+                if (isRunning) {
+                    console.log(`VM idle for ${Math.floor(timeSinceActive/60000)} mins. Stopping VM...`);
+                    isVmActionInProgress = true;
+                    // beginDeallocate stops billing; beginPowerOff does not.
+                    await client.virtualMachines.beginDeallocate(AZURE_RG, AZURE_VM);
+                    console.log("VM Deallocation initiated.");
+                }
+            } catch (err) {
+                console.error("Idle shutdown error:", err.message);
+            } finally {
+                isVmActionInProgress = false;
+            }
+        }
+    }
+}, 60 * 1000);
+// =============================================================================
+
 app.set('view engine', 'hbs');
 app.set('views', './src/views')
 
 // Routes for this app
-app.use('/cnc', express.static(__dirname + '/examples/cnc'))
-app.use('/health', express.static(__dirname + '/examples/health'))
+app.use('/cnc', express.static(__dirname + '/pages/cnc'))
+app.use('/health', express.static(__dirname + '/pages/health'))
 app.get('/favicon.ico', (req, res) => res.status(200))
 app.use('/definition', require('./routes/definition'))
 
@@ -99,8 +186,8 @@ app.get('/api/health/check-auth', async (req, res) => {
 // 3. API: Simulate Hops
 app.post('/api/health/test-hops', async (req, res) => {
   // FIX: Point to the files where they actually exist in src/examples/health/files/
-  const ioPath = path.join(__dirname, 'examples/health/files/hops_io.json');
-  const solvePath = path.join(__dirname, 'examples/health/files/hops_solve.json');
+  const ioPath = path.join(__dirname, 'pages/health/files/hops_io.json');
+  const solvePath = path.join(__dirname, 'pages/health/files/hops_solve.json');
 
   if (!fs.existsSync(ioPath) || !fs.existsSync(solvePath)) {
     // Helpful debug message if it fails again
