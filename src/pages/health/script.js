@@ -161,22 +161,83 @@ async function testInterface(filename) {
 document.getElementById('btn-load-interface').onclick = () => testInterface();
 document.getElementById('file-select').onchange = (e) => testInterface(e.target.value);
 
-// --- 5. HOPS SIMULATION ---
-async function runHopsTest() {
-    setStatus('card-hops', 'wait', 'Simulating...');
-    log("Sending Hops Simulation Request...");
+// --- 5. HOPS SOLVE ---
+async function testSolve() {
+    setStatus('card-hops', 'wait', 'Testing Solve...');
+    log("Testing Hops Solve endpoint...");
+
     try {
-        const res = await fetch('/api/health/test-hops', { method: 'POST' });
-        const data = await res.json();
-        
-        if (data.status === 'pass') setStatus('card-hops', 'pass', 'Success', data.message);
-        else if (data.status === 'yellow') setStatus('card-hops', 'wait', 'Missing Files', data.message);
-        else setStatus('card-hops', 'fail', 'Failed', data.message);
-        
+        // 1. Fetch the test file
+        const resFile = await fetch('/pages/health/files/hops_solve.json');
+        if (!resFile.ok) throw new Error(`Failed to fetch test data: ${resFile.statusText}`);
+        const solveData = await resFile.json();
+
+        // 2. Send the data to the /solve endpoint
+        const resSolve = await fetch('/solve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(solveData)
+        });
+
+        if (!resSolve.ok) {
+            const errorText = await resSolve.text();
+            throw new Error(`Solve request failed: ${resSolve.status} ${errorText}`);
+        }
+
+        const result = await resSolve.json();
+
+        // 3. Validate the response
+        if (result.values && result.values.length > 0) {
+            setStatus('card-hops', 'pass', 'Success', `Solve completed with ${result.values.length} output values.`);
+        } else {
+            throw new Error('Solve completed but returned no values.');
+        }
+
     } catch (e) {
-        setStatus('card-hops', 'fail', 'Network Error', e.message);
+        setStatus('card-hops', 'fail', 'Error', e.message);
     }
 }
 
+// --- 6. HOPS IO ---
+async function testIo() {
+    setStatus('card-io', 'wait', 'Testing IO...');
+    log("Testing Hops IO endpoint...");
+
+    try {
+        // 1. Fetch the test file
+        const resFile = await fetch('/pages/health/files/hops_io.json');
+        if (!resFile.ok) throw new Error(`Failed to fetch test data: ${resFile.statusText}`);
+        const ioData = await resFile.json();
+
+        // 2. Send the data to the /io endpoint (assuming it exists)
+        // This requires an /io endpoint on the app server that forwards to Compute
+        const resIo = await fetch('/io', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ioData)
+        });
+
+        if (!resIo.ok) {
+            const errorText = await resIo.text();
+            throw new Error(`IO request failed: ${resIo.status} ${errorText}`);
+        }
+
+        const result = await resIo.json();
+
+        // 3. Validate the response (structure may vary)
+        if (result.Inputs && result.Outputs) {
+            setStatus('card-io', 'pass', 'Success', `IO returned ${result.Inputs.length} Inputs and ${result.Outputs.length} Outputs.`);
+        } else {
+            throw new Error('IO response is missing expected Input/Output properties.');
+        }
+
+    } catch (e) {
+        setStatus('card-io', 'fail', 'Error', e.message);
+    }
+}
+
+
 // Start on load
 runTests();
+testSolve();
+testIo();

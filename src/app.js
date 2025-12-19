@@ -32,8 +32,8 @@ app.set('view engine', 'hbs');
 app.set('views', './src/views')
 
 // Routes for this app
-app.use('/cnc', express.static(__dirname + '/examples/cnc'))
-app.use('/health', express.static(__dirname + '/examples/health'))
+app.use('/cnc', express.static(__dirname + '/pages/cnc'))
+app.use('/health', express.static(__dirname + '/pages/health'))
 app.get('/favicon.ico', (req, res) => res.status(200))
 app.use('/definition', require('./routes/definition'))
 
@@ -99,8 +99,8 @@ app.get('/api/health/check-auth', async (req, res) => {
 // 3. API: Simulate Hops
 app.post('/api/health/test-hops', async (req, res) => {
   // FIX: Point to the files where they actually exist in src/examples/health/files/
-  const ioPath = path.join(__dirname, 'examples/health/files/hops_io.json');
-  const solvePath = path.join(__dirname, 'examples/health/files/hops_solve.json');
+  const ioPath = path.join(__dirname, 'pages/health/files/hops_io.json');
+  const solvePath = path.join(__dirname, 'pages/health/files/hops_solve.json');
 
   if (!fs.existsSync(ioPath) || !fs.existsSync(solvePath)) {
     // Helpful debug message if it fails again
