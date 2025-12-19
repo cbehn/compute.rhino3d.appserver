@@ -2,6 +2,9 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import rhino3dm from 'rhino3dm'
 
+// --- CONFIGURATION ---
+const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.8.gh'; // <--- Set your default file here
+
 // --- GLOBALS ---
 let currentDefinition = null;
 let inputs = {};
@@ -41,18 +44,23 @@ async function init() {
     const statusText = document.getElementById('startup-status');
     
     try {
-        // 0. Fetch Template DXF (default) in background
-        fetch('files/Template.dxf')
-            .then(r => r.blob())
-            .then(blob => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    defaultDxfB64 = reader.result.split(',')[1];
-                    console.log("Template.dxf loaded internally.");
-                };
-                reader.readAsDataURL(blob);
-            })
-            .catch(e => console.log("No Template.dxf found at files/Template.dxf"));
+        // 0. Fetch Template DXF (default) - AWAIT to ensure it's ready before solving
+        try {
+            const dxfRes = await fetch('files/Template.dxf');
+            if(dxfRes.ok) {
+                const blob = await dxfRes.blob();
+                defaultDxfB64 = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.readAsDataURL(blob);
+                });
+                console.log("Template.dxf loaded internally.");
+            } else {
+                console.log("Template.dxf not found.");
+            }
+        } catch(e) {
+            console.log("Error loading Template.dxf", e);
+        }
 
         // 1. Send Wake Up Command
         statusText.innerText = "Waking up Compute Server... (This may take 1-2 mins)";
@@ -99,14 +107,27 @@ async function init() {
         const res = await fetch('/');
         const definitions = await res.json();
         
+        let defaultExists = false;
+
         definitions.forEach(def => {
             if (def.name.endsWith('.gh') || def.name.endsWith('.ghx')) {
                 const option = document.createElement('option');
                 option.value = def.name;
                 option.innerText = def.name;
                 definitionSelect.appendChild(option);
+
+                if (def.name === DEFAULT_DEFINITION_NAME) {
+                    defaultExists = true;
+                }
             }
         });
+
+        // --- LOAD DEFAULT IF AVAILABLE ---
+        if (defaultExists) {
+            definitionSelect.value = DEFAULT_DEFINITION_NAME;
+            loadDefinition(DEFAULT_DEFINITION_NAME);
+        }
+
     } catch (err) {
         console.error("Failed to load definitions list", err);
     }
@@ -419,7 +440,6 @@ function createControl(param) {
         // 4. If Integer, ensure clean int
         if (isInt) {
             defaultValue = Math.round(defaultValue);
-            // If checking specifically for 0-based issue, 0 is fine.
         }
         
         // Store immediately so compute doesn't fail
