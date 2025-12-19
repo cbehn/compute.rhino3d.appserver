@@ -60,7 +60,7 @@
     "throng": "4.0.0",
     "multer": "^2.0.2",
     "@azure/identity": "^3.0.0",
-    "@azure/arm-compute": "^8.0.0"
+    "@azure/arm-compute": "^23.0.0"
   },
   "devDependencies": {
     "eslint": "8.7.0"
