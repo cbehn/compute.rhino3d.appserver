@@ -58,7 +58,9 @@
     "node-fetch": "2.6.7",
     "rhino3dm": "^8.4.0",
     "throng": "4.0.0",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "@azure/identity": "^3.0.0",
+    "@azure/arm-compute": "^8.0.0"
   },
   "devDependencies": {
     "eslint": "8.7.0"
