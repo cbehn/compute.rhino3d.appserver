@@ -1,73 +1,81 @@
 #!/usr/bin/env node
 
+/**
+ * Module dependencies.
+ */
+const app = require('../app')
+const debug = require('debug')('compute.appserver:server')
+const http = require('http')
 const throng = require('throng')
+const azureService = require('../services/azure-service')
+const definitionsModule = require('../definitions')
 
+// Get the number of workers from the environment, or default to 1 for local dev
 const WORKERS = process.env.WEB_CONCURRENCY || 1
 
+// Start the cluster
 throng({
   workers: WORKERS,
   lifetime: Infinity,
   start: start
 })
 
-function start(id){
-/**
- * Module dependencies.
- */
+function start(id) {
+  console.log(`Started worker ${id}`)
 
-  console.log(`Started worker ${ id }`)
-
-  var app = require('../app')
-  const definitions = require('../definitions.js').registerDefinitions()
+  // 1. Load Definitions
+  // We scan the files directory once at startup to build the list of available scripts.
+  const definitions = definitionsModule.registerDefinitions()
   app.set('definitions', definitions)
-  var debug = require('debug')('compute.appserver:server')
 
-  var http = require('http')
-
-  /**
- * Get port from environment and store in Express.
- */
-
-  var port = normalizePort(process.env.PORT || '3000')
+  // 2. Get Port
+  const port = normalizePort(process.env.PORT || '3000')
   app.set('port', port)
 
-  /**
- * Create HTTP server.
- */
+  // 3. Create HTTP Server
+  const server = http.createServer(app)
 
-  var server = http.createServer(app)
-
-  /**
- * Listen on provided port, on all network interfaces.
- */
-
+  // 4. Start Listening
   server.listen(port)
   server.on('error', onError)
   server.on('listening', onListening)
 
-  /**
- * Normalize a port into a number, string, or false.
- */
+  // ===========================================================================
+  //   AZURE WATCHDOG (SINGLE WORKER ONLY)
+  // ===========================================================================
+  
+  // We only want ONE process checking for idleness to avoid race conditions.
+  // Worker 1 takes this responsibility.
+  if (id === 1) {
+    console.log(`[Worker ${id}] Initializing Azure Watchdog...`)
+    
+    // Check every 60 seconds
+    setInterval(() => {
+      azureService.checkIdleAndShutdown().catch(err => {
+        console.error("Watchdog Error:", err)
+      })
+    }, 60 * 1000)
+  }
+
+  // ===========================================================================
+  //   HELPER FUNCTIONS
+  // ===========================================================================
 
   function normalizePort(val) {
     var port = parseInt(val, 10)
 
     if (isNaN(port)) {
-    // named pipe
+      // named pipe
       return val
     }
 
     if (port >= 0) {
-    // port number
+      // port number
       return port
     }
 
     return false
   }
-
-  /**
- * Event listener for HTTP server "error" event.
- */
 
   function onError(error) {
     if (error.syscall !== 'listen') {
@@ -80,22 +88,18 @@ function start(id){
 
     // handle specific listen errors with friendly messages
     switch (error.code) {
-    case 'EACCES':
-      console.error(bind + ' requires elevated privileges')
-      process.exit(1)
-      break
-    case 'EADDRINUSE':
-      console.error(bind + ' is already in use')
-      process.exit(1)
-      break
-    default:
-      throw error
+      case 'EACCES':
+        console.error(bind + ' requires elevated privileges')
+        process.exit(1)
+        break
+      case 'EADDRINUSE':
+        console.error(bind + ' is already in use')
+        process.exit(1)
+        break
+      default:
+        throw error
     }
   }
-
-  /**
- * Event listener for HTTP server "listening" event.
- */
 
   function onListening() {
     var addr = server.address()
@@ -105,7 +109,7 @@ function start(id){
     debug('Listening on ' + bind)
     console.log('Listening on ' + bind)
 
-    // print handy /view url
+    // print handy /view url for local dev
     if (typeof addr !== 'string') {
       console.log(`Go to viewer: http://localhost:${addr.port}/view`)
     }

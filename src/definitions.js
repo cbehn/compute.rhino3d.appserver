@@ -1,8 +1,56 @@
 const fs = require('fs')
 const path = require('path')
 const md5File = require('md5-file')
-const camelcaseKeys = require('camelcase-keys')
 const fetch = require('node-fetch')
+
+// Helper: Extract the raw data string from the Rhino DataTree JSON structure
+function extractDefaultValue(rawDefault) {
+  // 1. If undefined or null, return undefined
+  if (rawDefault === undefined || rawDefault === null) return undefined;
+
+  // 2. Handle standard Rhino DataTree structure
+  // Expected: { InnerTree: { "{0}": [ { type: "...", data: "..." } ] } }
+  if (rawDefault.InnerTree) {
+    const branches = Object.values(rawDefault.InnerTree);
+    
+    // Check if we have at least one branch with data
+    if (branches.length > 0 && branches[0].length > 0) {
+      const item = branches[0][0];
+      // Return the raw data string (e.g., "0.15", "5", "True")
+      return item.data; 
+    }
+  }
+
+  // 3. Fallback: If it's already a simple value (unlikely with standardized Hops, but possible)
+  return rawDefault;
+}
+
+// Helper: Cast string values to their correct JS type based on Hops ParamType
+function castValue(value, paramType) {
+  if (value === undefined || value === null) return undefined;
+
+  // Normalize type to lowercase for easier comparison
+  const type = (paramType || '').toLowerCase();
+
+  // 1. Integers
+  if (type === 'integer' || type === 'int' || type === 'system.int32') {
+    return parseInt(value, 10);
+  }
+
+  // 2. Floats / Numbers
+  if (type === 'number' || type === 'double' || type === 'system.double') {
+    return parseFloat(value);
+  }
+
+  // 3. Booleans
+  if (type === 'boolean' || type === 'bool' || type === 'system.boolean') {
+    const s = String(value).toLowerCase();
+    return s === 'true';
+  }
+
+  // 4. Default: Return as string
+  return value;
+}
 
 function getFilesSync(dir) {
   return fs.readdirSync(dir)
@@ -10,20 +58,15 @@ function getFilesSync(dir) {
 
 function registerDefinitions() {
   const filesDir = path.join(__dirname, 'files/')
-  console.log('--- DEBUG: Definition Scanner ---');
-  console.log('Looking for files in:', filesDir);
-
+  
   if (!fs.existsSync(filesDir)) {
-    console.error('ERROR: Files directory not found at:', filesDir);
     return [];
   }
 
   let files = getFilesSync(filesDir)
-  console.log('Raw files found:', files);
-
   let definitions = []
-
   const baseNames = new Set()
+  
   files.forEach(file => {
     if (file.endsWith('.gh') || file.endsWith('.ghx')) {
       baseNames.add(path.parse(file).name)
@@ -50,17 +93,14 @@ function registerDefinitions() {
     }
   })
 
-  console.log('Registered definitions:', definitions);
-  console.log('---------------------------------');
-
   return definitions
 }
 
 async function getParams(definitionPath) {
+  // 1. Read the file fresh (No Caching as requested)
   const buffer = fs.readFileSync(definitionPath)
   const algo = buffer.toString('base64')
   
-  // Standard Hops/Compute Request Body
   const requestBody = {
     "absolutetolerance": 0.01,
     "angletolerance": 1.0,
@@ -92,36 +132,43 @@ async function getParams(definitionPath) {
       throw new Error(`Compute Server returned ${response.status}: ${errorText}`)
     }
 
-    let result = await response.json()
+    const result = await response.json()
     
-    // Convert keys to camelCase (e.g. "Default" -> "default")
-    // Note: This relies on camelcase-keys working correctly. 
-    result = camelcaseKeys(result, { deep: true })
-    
-    // Safely grab inputs array (handle casing variations)
+    // 2. Parse Inputs with Robust Handling
+    // Handle casing variations (Inputs vs inputs vs inputNames)
     let rawInputs = result.inputs || result.Inputs || result.inputNames || [];
     
-    // Explicitly map inputs to ensure Client expects properties exist
-    // This fixes issues where 'AtLeast' becomes 'atLeast' but client wants 'minimum'
-    // And ensures 'default' is definitely set.
     let inputs = rawInputs.map(input => {
+        // Normalize Fields
+        const name = input.Name || input.name;
+        const description = input.Description || input.description || "";
+        const paramType = input.ParamType || input.paramType || "String"; // Default to string if missing
+
+        // Robust Default Extraction
+        const rawDefault = (input.Default !== undefined) ? input.Default : input.default;
+        const rawDefaultValue = extractDefaultValue(rawDefault);
+        const defaultValue = castValue(rawDefaultValue, paramType);
+
+        // Normalize Ranges
+        // We prioritize explicit Minimum/Maximum fields for values
+        const minRaw = (input.Minimum !== undefined) ? input.Minimum : input.minimum;
+        const maxRaw = (input.Maximum !== undefined) ? input.Maximum : input.maximum;
+        
         return {
-            name: input.name || input.Name,
-            description: input.description || input.Description,
-            paramType: input.paramType || input.ParamType,
-            
-            // Map Defaults
-            default: (input.default !== undefined) ? input.default : input.Default,
-            
-            // Map Ranges (Client expects 'minimum'/'maximum')
-            minimum: (input.minimum !== undefined) ? input.minimum : (input.atLeast !== undefined ? input.atLeast : input.AtLeast),
-            maximum: (input.maximum !== undefined) ? input.maximum : (input.atMost !== undefined ? input.atMost : input.AtMost),
+            name: name,
+            description: description,
+            paramType: paramType, // "Number", "Integer", "Boolean"
+            default: defaultValue,
+            minimum: castValue(minRaw, paramType),
+            maximum: castValue(maxRaw, paramType),
+            // We do NOT map AtLeast/AtMost to min/max anymore, as they usually refer to item counts, not value constraints.
         };
     });
 
     let outputs = result.outputs || result.Outputs || result.outputNames
     const description = result.description || result.Description || ''
 
+    // Determine view visibility (legacy logic)
     let view = true
     if (inputs) {
       inputs.forEach(i => {

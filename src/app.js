@@ -185,7 +185,6 @@ app.get('/api/health/check-auth', async (req, res) => {
 
 // 3. API: Simulate Hops
 app.post('/api/health/test-hops', async (req, res) => {
-  // FIX: Point to the files where they actually exist in src/examples/health/files/
   const ioPath = path.join(__dirname, 'pages/health/files/hops_io.json');
   const solvePath = path.join(__dirname, 'pages/health/files/hops_solve.json');
 
