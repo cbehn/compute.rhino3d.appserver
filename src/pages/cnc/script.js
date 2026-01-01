@@ -63,7 +63,7 @@ async function init() {
         }
 
         // 1. Send Wake Up Command
-        statusText.innerText = "Waking up Compute Server... (This may take 1-2 mins)";
+        statusText.innerText = "Waking up Compute Server...";
         console.log("Sending wakeup command...");
         fetch('/wakeup', { method: 'POST' }).catch(e => console.error("Wakeup trigger failed:", e));
 
@@ -104,7 +104,8 @@ async function init() {
     init3D();
 
     try {
-        const res = await fetch('/');
+        // MODIFIED: Fetch definitions from API instead of root
+        const res = await fetch('/api/definitions');
         const definitions = await res.json();
         
         let defaultExists = false;

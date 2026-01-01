@@ -158,21 +158,47 @@
 
         #loader { text-align: center; margin-top: 20px; font-style: italic; color: #666; display: none; }
         
-        /* NEW STARTUP OVERLAY */
+        /* NEW STARTUP OVERLAY (TV TEST SCREEN STYLE) */
         #startup-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255,255,255,0.95);
             z-index: 9999;
             display: flex; flex-direction: column;
             justify-content: center; align-items: center;
+            background-color: #111;
+            font-family: 'Courier New', Courier, monospace;
+            text-transform: uppercase;
         }
-        .spinner {
-            border: 8px solid #f3f3f3; border-top: 8px solid #2196F3;
-            border-radius: 50%; width: 60px; height: 60px;
-            animation: spin 1s linear infinite; margin-bottom: 20px;
+
+        /* SMPTE Color Bars Container */
+        .smpte-bars {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; z-index: -1;
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #startup-status { font-family: sans-serif; font-size: 1.2em; color: #444; }
+        .bar { height: 100%; flex: 1; }
+        .b-white { background: #c0c0c0; }
+        .b-yellow { background: #c0c000; }
+        .b-cyan { background: #00c0c0; }
+        .b-green { background: #00c000; }
+        .b-magenta { background: #c000c0; }
+        .b-red { background: #c00000; }
+        .b-blue { background: #0000c0; }
+
+        /* Retro TV Text Box */
+        .tv-message-box {
+            background: rgba(0, 0, 0, 0.85);
+            padding: 40px;
+            border: 2px solid white;
+            text-align: center;
+            color: white;
+            box-shadow: 10px 10px 0px rgba(0,0,0,0.5);
+            max-width: 600px;
+        }
+
+        .tv-title { font-size: 2em; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px; color: #ffff00; text-shadow: 2px 2px #ff0000; }
+        .tv-subtitle { font-size: 1.2em; margin-bottom: 30px; color: #00ffff; }
+        .tv-blink { animation: blink 1.5s infinite; color: #ff00ff; font-weight: bold;}
+
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
 
         /* VALUE EDITOR MODAL */
         #value-modal {
@@ -197,8 +223,22 @@
 <body>
 
     <div id="startup-overlay">
-        <div class="spinner"></div>
-        <div id="startup-status">Starting Compute Server...</div>
+        <div class="smpte-bars">
+            <div class="bar b-white"></div>
+            <div class="bar b-yellow"></div>
+            <div class="bar b-cyan"></div>
+            <div class="bar b-green"></div>
+            <div class="bar b-magenta"></div>
+            <div class="bar b-red"></div>
+            <div class="bar b-blue"></div>
+        </div>
+
+        <div class="tv-message-box">
+            <div class="tv-title">PLEASE STAND BY</div>
+            <div class="tv-subtitle">STARTING COMPUTE SERVER</div>
+            <div style="font-size: 0.9em; color: #ccc; margin-bottom: 20px;">ESTIMATED TIME: 1-2 MINUTES</div>
+            <div class="tv-blink" id="startup-status">INITIALIZING...</div>
+        </div>
     </div>
 
     <div id="value-modal">

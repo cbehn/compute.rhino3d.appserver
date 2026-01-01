@@ -4,7 +4,9 @@
  * outputs for a given definition
  * * Routes:
  * ('/')
- * Show list of definitions available
+ * Show landing page
+ * ('/api/definitions')
+ * Show list of definitions available (JSON)
  * ('/:definition')
  * Get definition input/output details for a definition installed in
  * this AppServer. These definitions are located in the 'files' directory
@@ -29,11 +31,16 @@ function setComputeParams (){
 }
 
 /**
- * Return list of definitions available on this server. The definitions
- * are located in the 'files' directory. These are the names that can be
- * used to call '/:definition_name` for details about a specific definition
+ * NEW: Landing Page
  */
-router.get('/',  function(req, res, next) {
+router.get('/', function(req, res, next) {
+  res.render('landing');
+});
+
+/**
+ * Return list of definitions available on this server (JSON API). 
+ */
+router.get('/api/definitions',  function(req, res, next) {
   let definitions = req.app.get('definitions');
 
   // --- FIX: Auto-Rescan if empty ---
