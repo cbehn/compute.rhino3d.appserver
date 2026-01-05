@@ -8,16 +8,30 @@ const AZURE_SUB_ID = process.env.AZURE_SUBSCRIPTION_ID;
 const AZURE_RG = process.env.AZURE_RESOURCE_GROUP;
 const AZURE_VM = process.env.AZURE_VM_NAME;
 const REDIS_KEY_LAST_ACTIVITY = 'compute:last-activity';
-const IDLE_LIMIT_MS = 30 * 60 * 1000; // 30 minutes
+const IDLE_LIMIT_MS = process.env.IDLE_SHUTDOWN_LIMIT_MINUTES * 60 * 30 || 30 * 60 * 1000; // default to 30 minutes
 
 class AzureService {
   constructor() {
-    // Use Redis to share state across all worker processes
-    this.cache = memjs.Client.create(process.env.MEMCACHIER_SERVERS, {
-      failover: true,
-      timeout: 1,
-      keepAlive: true
-    });
+    // UPDATED: Check if MemCachier is configured. If not, fallback to local memory.
+    if (process.env.MEMCACHIER_SERVERS) {
+        this.cache = memjs.Client.create(process.env.MEMCACHIER_SERVERS, {
+            failover: true,
+            timeout: 1,
+            keepAlive: true
+        });
+    } else {
+        console.log("⚠️ No MEMCACHIER_SERVERS detected. Using in-memory cache fallback.");
+        this._localCache = {};
+        // Mock the memjs interface
+        this.cache = {
+            get: async (key) => {
+                return { value: this._localCache[key] };
+            },
+            set: async (key, value, options) => {
+                this._localCache[key] = value;
+            }
+        };
+    }
 
     this.computeClient = null;
   }
@@ -47,6 +61,10 @@ class AzureService {
     // 1. Fast Check: Ping the application directly
     try {
       let computeUrl = process.env.RHINO_COMPUTE_URL;
+      if (!computeUrl) {
+          console.warn("RHINO_COMPUTE_URL is not set. Skipping fast check.");
+          throw new Error("No URL");
+      }
       if (!computeUrl.endsWith('/')) computeUrl += '/';
       
       const healthUrl = computeUrl + 'healthcheck';
@@ -91,6 +109,7 @@ class AzureService {
     console.log("VM is stopped. Sending start command...");
     try {
         await client.virtualMachines.beginStart(AZURE_RG, AZURE_VM);
+        await this.keepAlive();
         return "starting";
     } catch (err) {
         // Handle Spot Instance capacity errors gracefully
@@ -103,8 +122,15 @@ class AzureService {
 
   // Periodically check if the server has been idle too long
   async checkIdleAndShutdown() {
-    const { value } = await this.cache.get(REDIS_KEY_LAST_ACTIVITY);
-    const lastActivity = value ? parseInt(value.toString()) : Date.now();
+    let lastActivity;
+    try {
+        const { value } = await this.cache.get(REDIS_KEY_LAST_ACTIVITY);
+        lastActivity = value ? parseInt(value.toString()) : Date.now();
+    } catch (e) {
+        console.warn("Failed to read last activity from cache. Resetting timer.");
+        lastActivity = Date.now();
+    }
+
     const timeSince = Date.now() - lastActivity;
 
     if (timeSince > IDLE_LIMIT_MS) {

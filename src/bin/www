@@ -12,7 +12,7 @@ const definitionsModule = require('../definitions')
 
 // Get the number of workers from the environment, or default to 1 for local dev
 const WORKERS = process.env.WEB_CONCURRENCY || 1
-
+const SHUTDOWN_CHECK_INTERVAL = process.env.SHUTDOWN_CHECK_INTERVAL || 60 // in seconds
 // Start the cluster
 throng({
   workers: WORKERS,
@@ -49,12 +49,12 @@ function start(id) {
   if (id === 1) {
     console.log(`[Worker ${id}] Initializing Azure Watchdog...`)
     
-    // Check every 60 seconds
+    // Check every env defined seconds
     setInterval(() => {
       azureService.checkIdleAndShutdown().catch(err => {
         console.error("Watchdog Error:", err)
       })
-    }, 60 * 1000)
+    }, SHUTDOWN_CHECK_INTERVAL * 1000)
   }
 
   // ===========================================================================
