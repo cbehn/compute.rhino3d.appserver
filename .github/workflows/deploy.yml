@@ -5,7 +5,7 @@ on:
     branches: [ "prod" ] # This ensures it only runs when code hits 'prod'
 
 permissions:
-  id-token: write
+  id-token: write # Required for Azure login if using OIDC
   contents: read
 
 jobs:
