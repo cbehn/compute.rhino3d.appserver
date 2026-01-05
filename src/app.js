@@ -37,15 +37,42 @@ console.log('RHINO_COMPUTE_URL: ' + process.env.RHINO_COMPUTE_URL)
 const AZURE_SUB_ID = process.env.AZURE_SUBSCRIPTION_ID;
 const AZURE_RG = process.env.AZURE_RESOURCE_GROUP;
 const AZURE_VM = process.env.AZURE_VM_NAME;
+const IDLE_LIMIT_MS = process.env.IDLE_SHUTDOWN_LIMIT_MINUTES * 60 * 1000 || 30 * 60 * 1000; // default to 30 minutes
+const SHUTDOWN_CHECK_INTERVAL = process.env.SHUTDOWN_CHECK_INTERVAL * 1000 || 60 * 1000 // in seconds
 
-// Track last activity time (default to now so we don't shutdown immediately on boot)
-let lastActivity = Date.now();
+// --- NEW: Shared File-Based Heartbeat ---
+const ACTIVITY_FILE = path.join(__dirname, '.last_activity');
+
+// Update the file timestamp to "now"
+function touchActivity() {
+    try {
+        const time = Date.now().toString();
+        fs.writeFileSync(ACTIVITY_FILE, time, 'utf8');
+    } catch (err) {
+        console.error("Error updating activity file:", err);
+    }
+}
+
+// Read the timestamp (returns ms since epoch)
+function getLastActivity() {
+    try {
+        if (!fs.existsSync(ACTIVITY_FILE)) return Date.now(); // Default to now if missing
+        const content = fs.readFileSync(ACTIVITY_FILE, 'utf8');
+        return parseInt(content, 10) || Date.now();
+    } catch (err) {
+        console.error("Error reading activity file:", err);
+        return Date.now(); // Fail safe to "active"
+    }
+}
+
+// Initialize on boot
+touchActivity();
 let isVmActionInProgress = false;
 
 // Middleware to update last activity on solve requests
 app.use('/solve', (req, res, next) => {
-    lastActivity = Date.now();
-    res.on('finish', () => { lastActivity = Date.now(); });
+    touchActivity(); // Write to disk
+    res.on('finish', () => { touchActivity(); });
     next();
 });
 
@@ -80,14 +107,17 @@ app.post('/wakeup', async (req, res) => {
     } finally {
         isVmActionInProgress = false;
         // Reset idle timer so we don't shut down immediately after waking
-        lastActivity = Date.now();
+        touchActivity(); 
     }
 });
 
 // IDLE CHECKER (Runs every minute)
 // Shuts down VM if idle for > 30 mins
 setInterval(async () => {
-    const IDLE_LIMIT = 30 * 60 * 1000; // 30 minutes
+    const IDLE_LIMIT = IDLE_LIMIT_MS; 
+    
+    // Read from shared file
+    const lastActivity = getLastActivity();
     const timeSinceActive = Date.now() - lastActivity;
 
     if (timeSinceActive > IDLE_LIMIT && !isVmActionInProgress) {
@@ -112,7 +142,7 @@ setInterval(async () => {
             }
         }
     }
-}, 60 * 1000);
+}, SHUTDOWN_CHECK_INTERVAL)
 // =============================================================================
 
 app.set('view engine', 'hbs');
@@ -185,7 +215,6 @@ app.get('/api/health/check-auth', async (req, res) => {
 
 // 3. API: Simulate Hops
 app.post('/api/health/test-hops', async (req, res) => {
-  // FIX: Point to the files where they actually exist in src/examples/health/files/
   const ioPath = path.join(__dirname, 'pages/health/files/hops_io.json');
   const solvePath = path.join(__dirname, 'pages/health/files/hops_solve.json');
 

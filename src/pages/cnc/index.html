@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>CNC Profiler</title>
+    <title>CoLab CNC Setup Tool</title>
     <style>
         body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #f0f0f0; }
         
@@ -35,6 +35,38 @@
         label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.85em; color: #444;}
         input[type=range], input[type=number], input[type=text] { width: 100%; box-sizing: border-box; }
         
+        /* Tooltip Icon Styles */
+        .help-icon {
+            display: inline-block;
+            width: 14px; height: 14px;
+            background: #ccc; color: white;
+            border-radius: 50%;
+            text-align: center; line-height: 14px;
+            font-size: 10px; font-weight: bold;
+            margin-left: 6px; cursor: help;
+            position: relative;
+            vertical-align: middle;
+        }
+        .help-icon:hover { background: #2196F3; }
+        /* Tooltip Popup */
+        .help-icon:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 135%; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            width: 180px;
+            z-index: 1000;
+            font-weight: normal;
+            font-size: 0.9em;
+            pointer-events: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
         /* Static Value Display (Clickable) */
         .val-display-static {
             float: right; 
@@ -102,13 +134,16 @@
             font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer;
         }
 
-        /* Top Right Output Area */
-        #output-layer { 
+        /* RIGHT PANEL STACK 
+           Replaces "output-layer" with a consolidated stack
+        */
+        #right-stack { 
             position: absolute; top: 20px; right: 20px; 
-            z-index: 20; width: 280px; display: flex; flex-direction: column; gap: 10px; 
+            z-index: 20; width: 280px; 
+            display: flex; flex-direction: column; gap: 10px; 
             pointer-events: none; /* Let clicks pass through gaps */
         }
-        #output-layer > * { pointer-events: auto; }
+        #right-stack > * { pointer-events: auto; }
 
         button#downloadBtn { 
             width: 100%; padding: 12px; font-size: 1em; 
@@ -141,13 +176,11 @@
             display: none; /* Hidden until generated */
         }
 
-        /* View Controls */
+        /* View Controls - Now part of the stack */
         #view-controls {
-            position: absolute; bottom: 20px; right: 20px;
             background: white; padding: 10px; border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
-            z-index: 20; width: 120px;
         }
         .view-btn {
             padding: 5px; font-size: 0.7em; cursor: pointer;
@@ -158,26 +191,61 @@
 
         #loader { text-align: center; margin-top: 20px; font-style: italic; color: #666; display: none; }
         
-        /* NEW STARTUP OVERLAY */
+        /* Info Toggle - Bottom Right */
+        #info-toggle {
+            position: fixed; bottom: 20px; right: 20px; z-index: 100;
+            background: white; width: 40px; height: 40px;
+            border-radius: 50%; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            cursor: pointer; font-size: 1.5em; text-align: center; line-height: 40px;
+        }
+        #info-panel {
+            position: fixed; top: 0; left: -350px; width: 300px; height: 100%;
+            background: white; z-index: 200; box-shadow: 2px 0 10px rgba(0,0,0,0.2);
+            transition: left 0.3s; padding: 25px; box-sizing: border-box;
+            overflow-y: auto; color: #333;
+        }
+        #info-panel h1 { font-size: 1.5em; margin-top: 0; color: #2196F3; }
+        .info-close { float: right; border: none; background: none; font-size: 1.5em; cursor: pointer; color: #666; }
+        .info-close:hover { color: #000; }
+        .demo-gif-container { margin: 20px 0; border: 1px solid #ddd; border-radius: 4px; overflow: hidden; }
+        .demo-gif-container img { width: 100%; display: block; }
+        .info-btn { display: block; width: 100%; text-decoration: none; padding: 10px; text-align: center; border-radius: 4px; margin-top: 10px; font-weight: bold; }
+
+        /* STARTUP OVERLAY */
         #startup-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255,255,255,0.95);
             z-index: 9999;
             display: flex; flex-direction: column;
             justify-content: center; align-items: center;
+            background-color: #111;
+            font-family: 'Courier New', Courier, monospace;
+            text-transform: uppercase;
         }
-        .spinner {
-            border: 8px solid #f3f3f3; border-top: 8px solid #2196F3;
-            border-radius: 50%; width: 60px; height: 60px;
-            animation: spin 1s linear infinite; margin-bottom: 20px;
+        .smpte-bars {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; z-index: -1;
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #startup-status { font-family: sans-serif; font-size: 1.2em; color: #444; }
+        .bar { height: 100%; flex: 1; }
+        .b-white { background: #c0c0c0; }
+        .b-yellow { background: #c0c000; }
+        .b-cyan { background: #00c0c0; }
+        .b-green { background: #00c000; }
+        .b-magenta { background: #c000c0; }
+        .b-red { background: #c00000; }
+        .b-blue { background: #0000c0; }
+        .tv-message-box {
+            background: rgba(0, 0, 0, 0.85); padding: 40px;
+            border: 2px solid white; text-align: center; color: white;
+            box-shadow: 10px 10px 0px rgba(0,0,0,0.5); max-width: 600px;
+        }
+        .tv-title { font-size: 2em; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px; color: #ffff00; text-shadow: 2px 2px #ff0000; }
+        .tv-subtitle { font-size: 1.2em; margin-bottom: 30px; color: #00ffff; }
+        .tv-blink { animation: blink 1.5s infinite; color: #ff00ff; font-weight: bold;}
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
 
         /* VALUE EDITOR MODAL */
         #value-modal {
-            display: none; /* Hidden by default */
-            position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%;
+            display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%;
             background-color: rgba(0,0,0,0.4); justify-content: center; align-items: center;
         }
         .modal-content {
@@ -196,9 +264,55 @@
 </head>
 <body>
 
+    <div id="info-toggle" title="About this Project">ℹ️</div>
+
+    <div id="info-panel">
+        <button class="info-close" id="close-info">&times;</button>
+        <h1>CoLab CNC Setup Tool</h1>
+        
+        <div class="demo-gif-container">
+            <img src="files/demo.gif" alt="CNC Profiler Demo">
+        </div>
+
+        <p><strong>Architecture:</strong></p>
+        <ul style="font-size: 0.9em; padding-left: 20px;">
+            <li><strong>Frontend:</strong> Three.js & HTML5 Canvas</li>
+            <li><strong>Backend:</strong> Node.js Express</li>
+            <li><strong>Engine:</strong> Rhino.Compute (Headless)</li>
+            <li><strong>Host:</strong> Azure Virtual Machine</li>
+        </ul>
+
+        <p style="font-size: 0.9em; line-height: 1.5em;">
+            This tool automates G-Code generation. It uploads DXF geometry to a remote Rhino instance, processes toolpaths with Grasshopper, and returns machine-ready code + visualization.
+        </p>
+
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+
+        <a href="https://github.com/cbehn/compute.rhino3d.appserver/tree/prod" target="_blank" class="info-btn" style="background: #333; color: white;">
+            View on GitHub
+        </a>
+        <a href="https://buymeacoffee.com/cbehn" target="_blank" class="info-btn" style="background: #FFDD00; color: black;">
+            ☕ Buy me a Coffee
+        </a>
+    </div>
+
     <div id="startup-overlay">
-        <div class="spinner"></div>
-        <div id="startup-status">Starting Compute Server...</div>
+        <div class="smpte-bars">
+            <div class="bar b-white"></div>
+            <div class="bar b-yellow"></div>
+            <div class="bar b-cyan"></div>
+            <div class="bar b-green"></div>
+            <div class="bar b-magenta"></div>
+            <div class="bar b-red"></div>
+            <div class="bar b-blue"></div>
+        </div>
+
+        <div class="tv-message-box">
+            <div class="tv-title">PLEASE STAND BY</div>
+            <div class="tv-subtitle">STARTING COMPUTE SERVER</div>
+            <div style="font-size: 0.9em; color: #ccc; margin-bottom: 20px;">ESTIMATED TIME: 1-2 MINUTES</div>
+            <div class="tv-blink" id="startup-status">INITIALIZING...</div>
+        </div>
     </div>
 
     <div id="value-modal">
@@ -248,28 +362,29 @@
 
         <div id="canvas-container"></div>
         
-        <div id="output-layer">
+        <div id="right-stack">
+            
+            <div id="view-controls">
+                <button class="view-btn iso" onclick="snapView('iso')">ISO</button>
+                <button class="view-btn" onclick="snapView('top')">Top</button>
+                <button class="view-btn" onclick="snapView('front')">Frt</button>
+                <button class="view-btn" onclick="snapView('right')">Rgt</button>
+                <button class="view-btn" onclick="snapView('left')">Lft</button>
+                <button class="view-btn" onclick="snapView('back')">Bck</button>
+                <button class="view-btn" onclick="snapView('bottom')">Btm</button>
+            </div>
+
             <div id="log-wrapper">
                 <details id="log-container">
-                    <summary>Debug Log</summary>
+                    <summary>Log</summary>
                     <div id="log-content">Waiting for calculation...</div>
                 </details>
             </div>
 
             <pre id="gcode-preview"></pre>
-
             <button id="downloadBtn" disabled>Download GCode</button>
         </div>
 
-        <div id="view-controls">
-            <button class="view-btn iso" onclick="snapView('iso')">ISO</button>
-            <button class="view-btn" onclick="snapView('top')">Top</button>
-            <button class="view-btn" onclick="snapView('front')">Frt</button>
-            <button class="view-btn" onclick="snapView('right')">Rgt</button>
-            <button class="view-btn" onclick="snapView('left')">Lft</button>
-            <button class="view-btn" onclick="snapView('back')">Bck</button>
-            <button class="view-btn" onclick="snapView('bottom')">Btm</button>
-        </div>
     </div>
 
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
