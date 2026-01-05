@@ -2,4 +2,4 @@
 .vscode/*
 !.vscode/launch.json
 .env
-.last_activity
+src/.last_activity
