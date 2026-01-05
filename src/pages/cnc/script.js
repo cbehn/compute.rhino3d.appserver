@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import rhino3dm from 'rhino3dm'
 
 // --- CONFIGURATION ---
-const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.8.gh'; // <--- Set your default file here
+const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.8.gh'; 
 
 // --- GLOBALS ---
 let currentDefinition = null;
@@ -15,6 +15,7 @@ let rhino;
 // State
 let liveCompute = false;
 let defaultDxfB64 = null;
+let lastSolveDuration = 0; // Performance Metric
 
 // Modal State
 let activeParamName = null;
@@ -39,12 +40,22 @@ init();
 
 async function init() {
     
-    // --- NEW: Wake Up & Health Check Logic ---
+    // --- Info Panel Logic ---
+    const infoPanel = document.getElementById('info-panel');
+    const infoToggle = document.getElementById('info-toggle');
+    const closeInfo = document.getElementById('close-info');
+
+    if(infoToggle && infoPanel) {
+        infoToggle.onclick = () => { infoPanel.style.left = '0'; };
+        closeInfo.onclick = () => { infoPanel.style.left = '-350px'; };
+    }
+    // ------------------------
+
     const overlay = document.getElementById('startup-overlay');
     const statusText = document.getElementById('startup-status');
     
     try {
-        // 0. Fetch Template DXF (default) - AWAIT to ensure it's ready before solving
+        // 0. Fetch Template DXF (default)
         try {
             const dxfRes = await fetch('files/Template.dxf');
             if(dxfRes.ok) {
@@ -84,7 +95,8 @@ async function init() {
             }
 
             if (isHealthy) {
-                const res = await fetch('/api/version');
+                // FIXED ROUTE: /version instead of /api/version
+                const res = await fetch('/version');
                 if (!res.ok) {
                     isHealthy = false;
                     statusText.innerText = `Compute Server version check failed (${res.status})`;
@@ -108,7 +120,6 @@ async function init() {
 
     // 3. Server is ready, hide overlay
     overlay.style.display = 'none';
-    // ----------------------------------------
 
     // Load Rhino3dm
     rhino = await rhino3dm();
@@ -117,7 +128,6 @@ async function init() {
     init3D();
 
     try {
-        // MODIFIED: Fetch definitions from API instead of root
         const res = await fetch('/api/definitions');
         const definitions = await res.json();
         
@@ -230,7 +240,7 @@ async function loadDefinition(name) {
             console.log("Used Template.dxf for initial inputs");
         }
 
-        // 3. Automatically trigger first solve (Always solve once on load)
+        // 3. Automatically trigger first solve
         setTimeout(() => {
             triggerSolve();
         }, 100);
@@ -244,7 +254,6 @@ async function loadDefinition(name) {
 async function triggerSolve() {
     if (!currentDefinition) return;
 
-    // Check if b64DXF is required but missing
     if (inputs.hasOwnProperty('b64DXF') && !inputs['b64DXF']) {
         console.log("Waiting for DXF upload before solving...");
         return;
@@ -253,6 +262,9 @@ async function triggerSolve() {
     document.getElementById('loader').style.display = 'block';
     downloadBtn.disabled = true;
     downloadBtn.innerText = "Calculating...";
+
+    // --- Performance Timing Start ---
+    const startTime = performance.now();
 
     try {
         const requestData = {
@@ -272,6 +284,9 @@ async function triggerSolve() {
         }
 
         const data = await res.json();
+        
+        // --- Performance Timing End ---
+        lastSolveDuration = (performance.now() - startTime).toFixed(0);
 
         if (data.values === undefined && data.errors) {
              throw new Error("Grasshopper Error: " + JSON.stringify(data.errors));
@@ -320,7 +335,7 @@ function handleResponse(data) {
     }
 
     logBox.style.color = "#333";
-    logBox.innerText = "Solution completed successfully.";
+    logBox.innerText = `✅ Solution completed in ${lastSolveDuration}ms.`;
 
     if (!data || !data.values || data.values.length < 1) {
         logBox.innerText += "\n(No geometry returned)";
@@ -379,8 +394,9 @@ function handleResponse(data) {
         });
     };
 
-    processGeometry(1, 0x000000); 
-    processGeometry(2, 0xff0000); 
+    // --- VISUALIZATION COLORS UPDATED ---
+    processGeometry(1, 0x4169E1); // Index 1: GCode Path -> Royal Blue
+    processGeometry(2, 0xff0000); // Index 2: Error Geometry -> Red
 
     if (data.values.length > 3 && data.values[3].InnerTree) {
         const logBranch = Object.values(data.values[3].InnerTree)[0];
@@ -388,7 +404,7 @@ function handleResponse(data) {
             const logLines = logBranch.map(item => {
                 try { return JSON.parse(item.data); } catch (e) { return item.data; }
             });
-            logBox.innerText = logLines.join('\n');
+            logBox.innerText += "\n" + logLines.join('\n');
         }
     }
 }
@@ -404,6 +420,21 @@ function createControl(param) {
     if (param.name === 'b64DXF') {
         const uploadWrapper = document.createElement('div');
         uploadWrapper.className = 'upload-btn-wrapper';
+        
+        // --- NEW: DXF Requirements Help ---
+        const helpLink = document.createElement('div');
+        helpLink.style.cssText = "text-align: right; font-size: 0.8em; color: #666; cursor: pointer; margin-bottom: 5px;";
+        helpLink.innerHTML = "ℹ️ <u>DXF Requirements</u>";
+        helpLink.onclick = () => alert(
+            "DXF REQUIREMENTS:\n" +
+            "1. Units: Files must be in Inches.\n" +
+            "2. Layers: \n   - 'Outside': Exterior profile cuts.\n   - 'Inside': Interior holes/features.\n" +
+            "3. Geometry: All curves must be closed loops.\n" +
+            "4. Cleanup: Remove duplicate lines and text blocks."
+        );
+        wrapper.appendChild(helpLink);
+        // ----------------------------------
+
         const btn = document.createElement('div');
         btn.className = 'btn-upload';
         btn.innerText = '📂 Upload DXF File';
@@ -431,6 +462,17 @@ function createControl(param) {
     } else if (param.paramType === 'Integer' || param.paramType === 'Number') {
         const label = document.createElement('label');
         label.innerText = param.name; 
+
+        // --- NEW: Dynamic Tooltip ---
+        if (param.description) {
+            const icon = document.createElement('span');
+            icon.className = 'help-icon';
+            icon.innerText = '?';
+            icon.setAttribute('data-tooltip', param.description);
+            label.appendChild(icon);
+        }
+        // ----------------------------
+
         wrapper.appendChild(label);
 
         const isInt = (param.paramType === 'Integer');
@@ -438,28 +480,22 @@ function createControl(param) {
         // --- Robust Default Value Logic ---
         let rawDef = param.default;
         
-        // 1. Handle missing, null, or empty string
         if (rawDef === undefined || rawDef === null || rawDef === '') {
             rawDef = 0.01;
         }
         
-        // 2. Convert to Number
         let defaultValue = Number(rawDef);
         
-        // 3. Handle NaN (e.g. if default was a non-numeric string)
         if (Number.isNaN(defaultValue)) {
             defaultValue = 0.01;
         }
 
-        // 4. If Integer, ensure clean int
         if (isInt) {
             defaultValue = Math.round(defaultValue);
         }
         
-        // Store immediately so compute doesn't fail
         inputs[param.name] = defaultValue;
 
-        // Static Text Display (Clickable)
         const valDisplay = document.createElement('div');
         valDisplay.className = 'val-display-static';
         valDisplay.innerText = defaultValue;
@@ -478,7 +514,7 @@ function createControl(param) {
 
             slider.addEventListener('input', (e) => {
                 const val = Number(e.target.value);
-                valDisplay.innerText = val; // Live update text
+                valDisplay.innerText = val; 
                 inputs[param.name] = val;
             });
             slider.addEventListener('mouseup', () => {
@@ -487,14 +523,13 @@ function createControl(param) {
             wrapper.appendChild(slider);
         }
 
-        // Click event to open Modal
         valDisplay.addEventListener('click', () => {
             activeParamName = param.name;
             activeDisplayEl = valDisplay;
             activeSliderEl = slider;
             
             modalTitle.innerText = `Set ${param.name}`;
-            modalInput.value = inputs[param.name]; // Load current
+            modalInput.value = inputs[param.name]; 
             modalInput.step = isInt ? 1 : 'any';
             
             valueModal.style.display = 'flex';
@@ -504,6 +539,17 @@ function createControl(param) {
     } else if (param.paramType === 'Boolean') {
         const label = document.createElement('label');
         label.innerText = param.name;
+        
+        // --- NEW: Tooltip ---
+        if (param.description) {
+            const icon = document.createElement('span');
+            icon.className = 'help-icon';
+            icon.innerText = '?';
+            icon.setAttribute('data-tooltip', param.description);
+            label.appendChild(icon);
+        }
+        // --------------------
+
         wrapper.appendChild(label);
         const toggle = document.createElement('div');
         toggle.className = 'toggle';
