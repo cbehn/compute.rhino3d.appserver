@@ -83,6 +83,19 @@ async function init() {
                 console.log("Health check connection failed, retrying...");
             }
 
+            if (isHealthy) {
+                const res = await fetch('/api/version');
+                if (!res.ok) {
+                    isHealthy = false;
+                    statusText.innerText = `Compute Server version check failed (${res.status})`;
+                    continue;
+                } else {
+                    const versionInfo = await res.json();
+                    statusText.innerText = `Compute Server is running (v${versionInfo.compute.server})`;
+                    console.log("Compute Server is healthy:", versionInfo);
+                }
+            }
+
             if (!isHealthy) {
                 // Wait 2 seconds before retrying
                 await new Promise(r => setTimeout(r, 2000));

@@ -37,6 +37,9 @@ console.log('RHINO_COMPUTE_URL: ' + process.env.RHINO_COMPUTE_URL)
 const AZURE_SUB_ID = process.env.AZURE_SUBSCRIPTION_ID;
 const AZURE_RG = process.env.AZURE_RESOURCE_GROUP;
 const AZURE_VM = process.env.AZURE_VM_NAME;
+const IDLE_LIMIT_MS = process.env.IDLE_SHUTDOWN_LIMIT_MINUTES * 60 * 1000 || 30 * 60 * 1000; // default to 30 minutes
+const SHUTDOWN_CHECK_INTERVAL = process.env.SHUTDOWN_CHECK_INTERVAL * 1000 || 60 * 1000 // in seconds
+
 
 // Track last activity time (default to now so we don't shutdown immediately on boot)
 let lastActivity = Date.now();
@@ -87,7 +90,7 @@ app.post('/wakeup', async (req, res) => {
 // IDLE CHECKER (Runs every minute)
 // Shuts down VM if idle for > 30 mins
 setInterval(async () => {
-    const IDLE_LIMIT = 30 * 60 * 1000; // 30 minutes
+    const IDLE_LIMIT = IDLE_LIMIT_MS; // 30 minutes
     const timeSinceActive = Date.now() - lastActivity;
 
     if (timeSinceActive > IDLE_LIMIT && !isVmActionInProgress) {
@@ -112,7 +115,7 @@ setInterval(async () => {
             }
         }
     }
-}, 60 * 1000);
+}, SHUTDOWN_CHECK_INTERVAL)
 // =============================================================================
 
 app.set('view engine', 'hbs');
