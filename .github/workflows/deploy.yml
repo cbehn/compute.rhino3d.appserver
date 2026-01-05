@@ -1,4 +1,4 @@
-name: Build and Deploy to ACA
+name: Build and Push to Docker Hub
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
