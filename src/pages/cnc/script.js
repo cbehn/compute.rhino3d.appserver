@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import rhino3dm from 'rhino3dm'
 
 // --- CONFIGURATION ---
-const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.8.gh'; 
+const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.9.gh'; 
 
 // --- GLOBALS ---
 let currentDefinition = null;
@@ -28,6 +28,7 @@ const downloadBtn = document.getElementById('downloadBtn');
 const definitionSelect = document.getElementById('definitionSelect');
 const computeBtn = document.getElementById('computeBtn');
 const liveComputeToggle = document.getElementById('liveComputeToggle');
+const warningContainer = document.getElementById('warning-container');
 
 // Modal Elements
 const valueModal = document.getElementById('value-modal');
@@ -40,14 +41,14 @@ init();
 
 async function init() {
     
-    // --- Info Panel Logic ---
+    // --- Info Panel Logic (Right Side) ---
     const infoPanel = document.getElementById('info-panel');
     const infoToggle = document.getElementById('info-toggle');
     const closeInfo = document.getElementById('close-info');
 
     if(infoToggle && infoPanel) {
-        infoToggle.onclick = () => { infoPanel.style.left = '0'; };
-        closeInfo.onclick = () => { infoPanel.style.left = '-350px'; };
+        infoToggle.onclick = () => { infoPanel.style.right = '0'; };
+        closeInfo.onclick = () => { infoPanel.style.right = '-350px'; };
     }
     // ------------------------
 
@@ -217,6 +218,7 @@ async function loadDefinition(name) {
     inputs = {}; 
     gcodeResult = null;
     downloadBtn.disabled = true;
+    warningContainer.innerHTML = ''; // Clear warnings
 
     try {
         const res = await fetch(`/definition/${name}/info`);
@@ -262,6 +264,7 @@ async function triggerSolve() {
     document.getElementById('loader').style.display = 'block';
     downloadBtn.disabled = true;
     downloadBtn.innerText = "Calculating...";
+    warningContainer.innerHTML = ''; // Clear old warnings
 
     // --- Performance Timing Start ---
     const startTime = performance.now();
@@ -308,10 +311,13 @@ async function triggerSolve() {
     }
 }
 
+// Fallback: Manually sample curve if Native conversion fails
 function curveToThree(rhinoCurve, material) {
     const points = [];
     const domain = rhinoCurve.domain;
-    const count = 100; 
+    
+    // UPDATED: High resolution sampling to prevent "skipping" on complex paths
+    const count = 3000; 
     
     for (let i = 0; i <= count; i++) {
         const t = domain[0] + (i / count) * (domain[1] - domain[0]);
@@ -322,6 +328,79 @@ function curveToThree(rhinoCurve, material) {
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const line = new THREE.Line(geometry, material);
     return line;
+}
+
+// Helper to process geometry branches
+function addGeometryToScene(tree, colorHex) {
+    if (!tree) return;
+    const material = new THREE.LineBasicMaterial({ color: colorHex });
+
+    Object.values(tree).forEach(branch => {
+        branch.forEach(item => {
+            const rhinoObject = decodeItem(item);
+            if (!rhinoObject) return;
+
+            let threeObj = null;
+
+            // 1. Try Native Conversion (Preserves Vertices/Polyline structure)
+            if (rhinoObject.toThreejsJSON) {
+                try {
+                    const loader = new THREE.BufferGeometryLoader();
+                    const json = rhinoObject.toThreejsJSON();
+                    const geo = loader.parse(json);
+                    
+                    if(rhinoObject instanceof rhino.Curve) {
+                        threeObj = new THREE.Line(geo, material);
+                    } else if (rhinoObject instanceof rhino.Mesh) {
+                         threeObj = new THREE.Mesh(geo, material);
+                    } else {
+                         threeObj = new THREE.Line(geo, material); 
+                    }
+                } catch (e) {
+                    console.warn("Native toThreejsJSON failed, falling back to sampling...", e);
+                }
+            }
+
+            // 2. Fallback: Manual Sampling (if native failed or not supported)
+            if (!threeObj && rhinoObject instanceof rhino.Curve) {
+                threeObj = curveToThree(rhinoObject, material);
+            }
+
+            // 3. Add to Scene
+            if (threeObj) {
+                threeObj.name = "generated_geo";
+                threeObj.rotation.x = -Math.PI / 2;
+                scene.add(threeObj);
+            }
+        });
+    });
+}
+
+// New helper to extract strings/logs from data tree
+function extractStrings(tree) {
+    const results = [];
+    if (!tree) return results;
+
+    Object.values(tree).forEach(branch => {
+        branch.forEach(item => {
+            try {
+                // Try parsing JSON if it's stringified
+                const parsed = JSON.parse(item.data);
+                results.push(parsed);
+            } catch (e) {
+                // Otherwise use raw string
+                results.push(item.data);
+            }
+        });
+    });
+    return results;
+}
+
+// Helper to check if a tree actually contains any items (ignores empty branches)
+function hasTreeData(tree) {
+    if (!tree) return false;
+    // Return true if ANY branch has length > 0
+    return Object.values(tree).some(branch => branch && branch.length > 0);
 }
 
 function handleResponse(data) {
@@ -338,75 +417,98 @@ function handleResponse(data) {
     logBox.innerText = `✅ Solution completed in ${lastSolveDuration}ms.`;
 
     if (!data || !data.values || data.values.length < 1) {
-        logBox.innerText += "\n(No geometry returned)";
+        logBox.innerText += "\n(No output values returned)";
         return;
     }
 
-    if (data.values[0] && data.values[0].InnerTree) {
-        const gcodeBranch = Object.values(data.values[0].InnerTree)[0];
-        if (gcodeBranch && gcodeBranch.length > 0) {
-            try {
-                gcodeResult = gcodeBranch.map(item => JSON.parse(item.data)).join('\n');
-                downloadBtn.disabled = false;
-                downloadBtn.innerText = "Download GCode";
-                const previewBox = document.getElementById('gcode-preview');
-                previewBox.style.display = 'block';
-                previewBox.innerText = gcodeResult;
-            } catch (e) { console.error("Error parsing GCode:", e); }
-        }
-    }
+    // --- RESET STATE ---
+    gcodeResult = null;
+    downloadBtn.disabled = true;
+    downloadBtn.innerText = "Download GCode";
+    
+    const previewBox = document.getElementById('gcode-preview');
+    previewBox.style.display = 'none';
+    previewBox.innerText = '';
+    warningContainer.innerHTML = ''; // Clear warnings
 
+    // --- CLEAR SCENE ---
     if (scene) {
         const toRemove = [];
         scene.traverse(child => { if (child.name === "generated_geo") toRemove.push(child); });
         toRemove.forEach(c => scene.remove(c));
     }
 
-    const processGeometry = (outputIndex, colorHex) => {
-        if (data.values.length <= outputIndex) return;
-        const tree = data.values[outputIndex].InnerTree;
-        if (!tree) return;
-
-        const material = new THREE.LineBasicMaterial({ color: colorHex });
+    // --- PROCESS VALUES BY NAME ---
+    // Log, GCode, dxfLines, CutPath, Bad Lines, Unused Lines
+    
+    data.values.forEach(item => {
+        const name = item.ParamName;
+        const tree = item.InnerTree;
         
-        Object.values(tree).forEach(branch => {
-            branch.forEach(item => {
-                const rhinoObject = decodeItem(item);
-                if (!rhinoObject) return;
+        if (!name || !tree) return;
 
-                let threeObj;
+        switch (name) {
+            case 'Log':
+                const logLines = extractStrings(tree);
+                if (logLines.length > 0) {
+                    logBox.innerText += "\n" + logLines.join('\n');
+                }
+                break;
+            
+            case 'GCode':
+                const gcodeLines = extractStrings(tree);
+                if (gcodeLines.length > 0) {
+                    gcodeResult = gcodeLines.join('\n');
+                    downloadBtn.disabled = false;
+                    downloadBtn.innerText = "Download GCode";
+                    previewBox.style.display = 'block';
+                    previewBox.innerText = gcodeResult;
+                }
+                break;
+
+            case 'dxfLines':
+                // Black
+                addGeometryToScene(tree, 0x000000); 
+                break;
+            
+            case 'CutPath':
+            case 'Cut Path': 
+                // Cyan
+                addGeometryToScene(tree, 0x00FFFF); 
+                break;
+            
+            case 'Bad Lines':
+                // Red
+                addGeometryToScene(tree, 0xFF0000); 
                 
-                if (rhinoObject instanceof rhino.Curve) {
-                    threeObj = curveToThree(rhinoObject, material);
-                } 
-                else if (rhinoObject.toThreejsJSON) {
-                    const loader = new THREE.BufferGeometryLoader();
-                    const geo = loader.parse(rhinoObject.toThreejsJSON());
-                    threeObj = new THREE.Line(geo, material);
+                // --- FIXED WARNING LOGIC ---
+                // Check if there is actual data in the tree branches
+                if (hasTreeData(tree)) {
+                    const warn = document.createElement('div');
+                    warn.className = 'warning-msg';
+                    warn.innerText = "⚠️ Open curves detected (cannot be used). Check Red lines.";
+                    warningContainer.appendChild(warn);
                 }
+                break;
+            
+            case 'Unused Lines':
+                // Magenta
+                addGeometryToScene(tree, 0xFF00FF); 
 
-                if (threeObj) {
-                    threeObj.name = "generated_geo";
-                    threeObj.rotation.x = -Math.PI / 2;
-                    scene.add(threeObj);
+                // --- FIXED WARNING LOGIC ---
+                if (hasTreeData(tree)) {
+                    const warn = document.createElement('div');
+                    warn.className = 'warning-msg';
+                    warn.innerText = "⚠️ Curves detected on unused layers. Check Magenta lines.";
+                    warningContainer.appendChild(warn);
                 }
-            });
-        });
-    };
-
-    // --- VISUALIZATION COLORS UPDATED ---
-    processGeometry(1, 0x4169E1); // Index 1: GCode Path -> Royal Blue
-    processGeometry(2, 0xff0000); // Index 2: Error Geometry -> Red
-
-    if (data.values.length > 3 && data.values[3].InnerTree) {
-        const logBranch = Object.values(data.values[3].InnerTree)[0];
-        if (logBranch && logBranch.length > 0) {
-            const logLines = logBranch.map(item => {
-                try { return JSON.parse(item.data); } catch (e) { return item.data; }
-            });
-            logBox.innerText += "\n" + logLines.join('\n');
+                break;
+            
+            default:
+                // Optional: Handle other named outputs if needed
+                break;
         }
-    }
+    });
 }
 
 // =========================================================
@@ -421,7 +523,7 @@ function createControl(param) {
         const uploadWrapper = document.createElement('div');
         uploadWrapper.className = 'upload-btn-wrapper';
         
-        // --- NEW: DXF Requirements Help ---
+        // --- DXF Requirements Help ---
         const helpLink = document.createElement('div');
         helpLink.style.cssText = "text-align: right; font-size: 0.8em; color: #666; cursor: pointer; margin-bottom: 5px;";
         helpLink.innerHTML = "ℹ️ <u>DXF Requirements</u>";
@@ -448,7 +550,8 @@ function createControl(param) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 inputs[param.name] = e.target.result.split(',')[1];
-                if(liveCompute) triggerSolve();
+                // Always trigger solve on new upload
+                triggerSolve();
             };
             reader.readAsDataURL(file);
         });
@@ -463,7 +566,7 @@ function createControl(param) {
         const label = document.createElement('label');
         label.innerText = param.name; 
 
-        // --- NEW: Dynamic Tooltip ---
+        // --- Dynamic Tooltip ---
         if (param.description) {
             const icon = document.createElement('span');
             icon.className = 'help-icon';
@@ -540,7 +643,6 @@ function createControl(param) {
         const label = document.createElement('label');
         label.innerText = param.name;
         
-        // --- NEW: Tooltip ---
         if (param.description) {
             const icon = document.createElement('span');
             icon.className = 'help-icon';
@@ -548,7 +650,6 @@ function createControl(param) {
             icon.setAttribute('data-tooltip', param.description);
             label.appendChild(icon);
         }
-        // --------------------
 
         wrapper.appendChild(label);
         const toggle = document.createElement('div');
@@ -557,13 +658,23 @@ function createControl(param) {
         const defaultState = param.default === true;
         inputs[param.name] = defaultState;
         
-        toggle.innerText = defaultState ? 'ON' : 'OFF';
+        // --- UPDATED: Hops Custom Labels with Z0 Override ---
+        let trueLabel = param.maximum || "ON";
+        let falseLabel = param.minimum || "OFF";
+        
+        // CHANGED: Swapped Top/Bottom
+        if (param.name.includes("Z0")) {
+            trueLabel = "Bottom";
+            falseLabel = "Top";
+        }
+        
+        toggle.innerText = defaultState ? trueLabel : falseLabel;
         if (defaultState) toggle.classList.add('active');
 
         toggle.onclick = () => {
             inputs[param.name] = !inputs[param.name];
             toggle.classList.toggle('active');
-            toggle.innerText = inputs[param.name] ? 'ON' : 'OFF';
+            toggle.innerText = inputs[param.name] ? trueLabel : falseLabel;
             if (liveCompute) triggerSolve();
         };
         wrapper.appendChild(toggle);

@@ -152,12 +152,24 @@
         }
         button#downloadBtn:disabled { background: #999; cursor: not-allowed; }
 
-        /* Log Container */
-        #log-wrapper {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 4px;
+        /* Warnings */
+        #warning-container {
+            display: flex; flex-direction: column; gap: 5px;
+        }
+        .warning-msg {
+            background: rgba(255, 0, 0, 0.9);
+            color: white; padding: 10px; border-radius: 4px;
+            font-size: 0.85em; font-weight: bold;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            backdrop-filter: blur(5px);
+            text-align: center;
+        }
+
+        /* Log Container - Now inside Info Panel */
+        #log-wrapper {
+            margin-top: auto; /* Push to bottom */
+            background: #f9f9f9;
+            border-radius: 4px;
+            border: 1px solid #ddd;
             overflow: hidden;
         }
         details#log-container { padding: 10px; }
@@ -165,7 +177,7 @@
         #log-content {
             max-height: 200px; overflow-y: auto; font-family: monospace; 
             font-size: 0.75em; margin-top: 10px; white-space: pre-wrap; 
-            background: #f5f5f5; padding: 5px; border: 1px solid #ddd;
+            background: #fff; padding: 5px; border: 1px solid #eee;
         }
 
         /* Gcode preview */
@@ -198,11 +210,14 @@
             border-radius: 50%; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
             cursor: pointer; font-size: 1.5em; text-align: center; line-height: 40px;
         }
+        /* INFO PANEL - RIGHT SIDE */
         #info-panel {
-            position: fixed; top: 0; left: -350px; width: 300px; height: 100%;
-            background: white; z-index: 200; box-shadow: 2px 0 10px rgba(0,0,0,0.2);
-            transition: left 0.3s; padding: 25px; box-sizing: border-box;
+            position: fixed; top: 0; right: -350px; left: auto; /* Change to Right */
+            width: 320px; height: 100%;
+            background: white; z-index: 200; box-shadow: -2px 0 10px rgba(0,0,0,0.2);
+            transition: right 0.3s; padding: 25px; box-sizing: border-box;
             overflow-y: auto; color: #333;
+            display: flex; flex-direction: column;
         }
         #info-panel h1 { font-size: 1.5em; margin-top: 0; color: #2196F3; }
         .info-close { float: right; border: none; background: none; font-size: 1.5em; cursor: pointer; color: #666; }
@@ -210,6 +225,11 @@
         .demo-gif-container { margin: 20px 0; border: 1px solid #ddd; border-radius: 4px; overflow: hidden; }
         .demo-gif-container img { width: 100%; display: block; }
         .info-btn { display: block; width: 100%; text-decoration: none; padding: 10px; text-align: center; border-radius: 4px; margin-top: 10px; font-weight: bold; }
+
+        /* Color Key */
+        .color-key-list { list-style: none; padding: 0; margin: 10px 0; font-size: 0.9em; }
+        .color-key-item { display: flex; align-items: center; margin-bottom: 5px; }
+        .color-swatch { width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; border: 1px solid #ccc; }
 
         /* STARTUP OVERLAY */
         #startup-overlay {
@@ -264,36 +284,36 @@
 </head>
 <body>
 
-    <div id="info-toggle" title="About this Project">ℹ️</div>
+    <div id="info-toggle" title="Help & Logs">ℹ️</div>
 
     <div id="info-panel">
         <button class="info-close" id="close-info">&times;</button>
-        <h1>CoLab CNC Setup Tool</h1>
+        <h1>CNC Tool Info</h1>
         
+        <p><strong>Color Key:</strong></p>
+        <ul class="color-key-list">
+            <li class="color-key-item"><div class="color-swatch" style="background:black;"></div> <span>Imported DXF</span></li>
+            <li class="color-key-item"><div class="color-swatch" style="background:#00FFFF;"></div> <span>Cut Path</span></li>
+            <li class="color-key-item"><div class="color-swatch" style="background:#FF0000;"></div> <span>Bad Lines (Open)</span></li>
+            <li class="color-key-item"><div class="color-swatch" style="background:#FF00FF;"></div> <span>Unused Lines</span></li>
+        </ul>
+
         <div class="demo-gif-container">
             <img src="files/demo.gif" alt="CNC Profiler Demo">
         </div>
 
-        <p><strong>Architecture:</strong></p>
-        <ul style="font-size: 0.9em; padding-left: 20px;">
-            <li><strong>Frontend:</strong> Three.js & HTML5 Canvas</li>
-            <li><strong>Backend:</strong> Node.js Express</li>
-            <li><strong>Engine:</strong> Rhino.Compute (Headless)</li>
-            <li><strong>Host:</strong> Azure Virtual Machine</li>
-        </ul>
-
-        <p style="font-size: 0.9em; line-height: 1.5em;">
-            This tool automates G-Code generation. It uploads DXF geometry to a remote Rhino instance, processes toolpaths with Grasshopper, and returns machine-ready code + visualization.
-        </p>
-
         <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
 
-        <a href="https://github.com/cbehn/compute.rhino3d.appserver/tree/prod" target="_blank" class="info-btn" style="background: #333; color: white;">
-            View on GitHub
-        </a>
-        <a href="https://buymeacoffee.com/cbehn" target="_blank" class="info-btn" style="background: #FFDD00; color: black;">
-            ☕ Buy me a Coffee
-        </a>
+        <div id="log-wrapper">
+            <details id="log-container" open>
+                <summary>System Log</summary>
+                <div id="log-content">Ready.</div>
+            </details>
+        </div>
+        
+        <div style="margin-top: 20px;">
+             <a href="https://github.com/cbehn/compute.rhino3d.appserver/tree/prod" target="_blank" class="info-btn" style="background: #333; color: white;">GitHub Repo</a>
+        </div>
     </div>
 
     <div id="startup-overlay">
@@ -374,15 +394,10 @@
                 <button class="view-btn" onclick="snapView('bottom')">Btm</button>
             </div>
 
-            <div id="log-wrapper">
-                <details id="log-container">
-                    <summary>Log</summary>
-                    <div id="log-content">Waiting for calculation...</div>
-                </details>
-            </div>
-
             <pre id="gcode-preview"></pre>
             <button id="downloadBtn" disabled>Download GCode</button>
+            
+            <div id="warning-container"></div>
         </div>
 
     </div>
