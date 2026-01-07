@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import rhino3dm from 'rhino3dm'
 
 // --- CONFIGURATION ---
-const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.9.gh'; 
+const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.9.1.gh'; 
 
 // --- GLOBALS ---
 let currentDefinition = null;
@@ -326,9 +326,6 @@ function curveToThree(rhinoCurve, material) {
     } 
     else if (rhinoCurve instanceof rhino.NurbsCurve && rhinoCurve.order === 2) {
         // Order 2 NURBS are also basically polylines (linear degree 1)
-        // We can try to get greville points or control points
-        // Fallback to high-res sampling if unsure, but usually 'PolylineCurve' is returned for CNC.
-        // Let's use sampling for safety unless we are sure.
         const domain = rhinoCurve.domain;
         const count = 3000;
         for (let i = 0; i <= count; i++) {
@@ -367,8 +364,6 @@ function addGeometryToScene(tree, colorHex) {
                  const ptObj = decodeItem(item);
                  if (ptObj) {
                     // Rhino.Point returns location as .location or [0],[1],[2]?
-                    // rhino3dm Point usually acts like arrays or have X,Y,Z
-                    // Let's be safe and check.
                     if (ptObj.location) {
                          points.push(new THREE.Vector3(ptObj.location[0], ptObj.location[1], ptObj.location[2]));
                     } else if (Array.isArray(ptObj)) {
@@ -416,8 +411,6 @@ function addGeometryToScene(tree, colorHex) {
             }
 
             // 2. Fallback / Override for Curve: Use Custom CurveToThree for better precision
-            // If it's a Curve, we often prefer our manual extraction (Strategy 1 above) 
-            // over the default low-res tessellation from toThreejsJSON, especially for CNC.
             if (rhinoObject instanceof rhino.Curve) {
                 // Regenerate using our high-precision method
                 threeObj = curveToThree(rhinoObject, material);
@@ -435,8 +428,6 @@ function addGeometryToScene(tree, colorHex) {
 
 function isPointData(item) {
     if (!item || !item.data) return false;
-    // Simple check: does the JSON data look like a point or is type "Rhino.Geometry.Point3d"?
-    // The 'type' field in the tree item is usually reliable.
     return (item.type && item.type.includes("Point"));
 }
 
@@ -522,11 +513,27 @@ function handleResponse(data) {
             case 'GCode':
                 const gcodeLines = extractStrings(tree);
                 if (gcodeLines.length > 0) {
-                    gcodeResult = gcodeLines.join('\n');
-                    downloadBtn.disabled = false;
-                    downloadBtn.innerText = "Download GCode";
-                    previewBox.style.display = 'block';
-                    previewBox.innerText = gcodeResult;
+                    const joinedGcode = gcodeLines.join('\n');
+                    
+                    // --- NEW CHECK: CATCH EMPTY GEOMETRY ERROR ---
+                    if (joinedGcode.trim() === "Error: Input text is empty.") {
+                         const warn = document.createElement('div');
+                         warn.className = 'warning-msg';
+                         warn.innerText = "⚠️ Could not find geometry to process. Check geometry layer assignment";
+                         warningContainer.appendChild(warn);
+                         
+                         // Disable download
+                         gcodeResult = null;
+                         downloadBtn.disabled = true;
+                         downloadBtn.innerText = "Download GCode";
+                         previewBox.style.display = 'none';
+                    } else {
+                        gcodeResult = joinedGcode;
+                        downloadBtn.disabled = false;
+                        downloadBtn.innerText = "Download GCode";
+                        previewBox.style.display = 'block';
+                        previewBox.innerText = gcodeResult;
+                    }
                 }
                 break;
 
@@ -546,7 +553,6 @@ function handleResponse(data) {
                 addGeometryToScene(tree, 0xFF0000); 
                 
                 // --- FIXED WARNING LOGIC ---
-                // Check if there is actual data in the tree branches
                 if (hasTreeData(tree)) {
                     const warn = document.createElement('div');
                     warn.className = 'warning-msg';
