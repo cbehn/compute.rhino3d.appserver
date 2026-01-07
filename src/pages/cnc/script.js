@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import rhino3dm from 'rhino3dm'
 
 // --- CONFIGURATION ---
-const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.8.gh'; 
+const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.9.gh'; 
 
 // --- GLOBALS ---
 let currentDefinition = null;
