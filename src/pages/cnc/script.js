@@ -311,18 +311,41 @@ async function triggerSolve() {
     }
 }
 
-// Fallback: Manually sample curve if Native conversion fails
+// Convert Rhino Curve to Three.js Line
 function curveToThree(rhinoCurve, material) {
     const points = [];
-    const domain = rhinoCurve.domain;
-    
-    // UPDATED: High resolution sampling to prevent "skipping" on complex paths
-    const count = 3000; 
-    
-    for (let i = 0; i <= count; i++) {
-        const t = domain[0] + (i / count) * (domain[1] - domain[0]);
-        const pt = rhinoCurve.pointAt(t);
-        points.push(new THREE.Vector3(pt[0], pt[1], pt[2]));
+
+    // --- STRATEGY 1: Exact Control Points (Best for PolylineCurves / Cut Paths) ---
+    if (rhinoCurve instanceof rhino.PolylineCurve) {
+        // Extract vertices directly to avoid sampling errors
+        const count = rhinoCurve.pointCount;
+        for (let i = 0; i < count; i++) {
+            const pt = rhinoCurve.point(i);
+            points.push(new THREE.Vector3(pt[0], pt[1], pt[2]));
+        }
+    } 
+    else if (rhinoCurve instanceof rhino.NurbsCurve && rhinoCurve.order === 2) {
+        // Order 2 NURBS are also basically polylines (linear degree 1)
+        // We can try to get greville points or control points
+        // Fallback to high-res sampling if unsure, but usually 'PolylineCurve' is returned for CNC.
+        // Let's use sampling for safety unless we are sure.
+        const domain = rhinoCurve.domain;
+        const count = 3000;
+        for (let i = 0; i <= count; i++) {
+            const t = domain[0] + (i / count) * (domain[1] - domain[0]);
+            const pt = rhinoCurve.pointAt(t);
+            points.push(new THREE.Vector3(pt[0], pt[1], pt[2]));
+        }
+    }
+    else {
+        // --- STRATEGY 2: High Res Sampling (Fallback for curved geometry) ---
+        const domain = rhinoCurve.domain;
+        const count = 3000; 
+        for (let i = 0; i <= count; i++) {
+            const t = domain[0] + (i / count) * (domain[1] - domain[0]);
+            const pt = rhinoCurve.pointAt(t);
+            points.push(new THREE.Vector3(pt[0], pt[1], pt[2]));
+        }
     }
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
@@ -336,13 +359,44 @@ function addGeometryToScene(tree, colorHex) {
     const material = new THREE.LineBasicMaterial({ color: colorHex });
 
     Object.values(tree).forEach(branch => {
+        // Check for "List of Points" scenario (User Request)
+        if (branch.length > 1 && isPointData(branch[0])) {
+             // Treat this whole branch as ONE connected polyline
+             const points = [];
+             branch.forEach(item => {
+                 const ptObj = decodeItem(item);
+                 if (ptObj) {
+                    // Rhino.Point returns location as .location or [0],[1],[2]?
+                    // rhino3dm Point usually acts like arrays or have X,Y,Z
+                    // Let's be safe and check.
+                    if (ptObj.location) {
+                         points.push(new THREE.Vector3(ptObj.location[0], ptObj.location[1], ptObj.location[2]));
+                    } else if (Array.isArray(ptObj)) {
+                        points.push(new THREE.Vector3(ptObj[0], ptObj[1], ptObj[2]));
+                    } else {
+                         // Fallback for Point3d struct
+                         points.push(new THREE.Vector3(ptObj.x, ptObj.y, ptObj.z));
+                    }
+                 }
+             });
+             if (points.length > 1) {
+                 const geo = new THREE.BufferGeometry().setFromPoints(points);
+                 const line = new THREE.Line(geo, material);
+                 line.name = "generated_geo";
+                 line.rotation.x = -Math.PI / 2;
+                 scene.add(line);
+             }
+             return; // Done with this branch
+        }
+
+        // Standard behavior (List of Curves, Meshes, etc.)
         branch.forEach(item => {
             const rhinoObject = decodeItem(item);
             if (!rhinoObject) return;
 
             let threeObj = null;
 
-            // 1. Try Native Conversion (Preserves Vertices/Polyline structure)
+            // 1. Try Native Conversion (Preserves Vertices/Polyline structure if meshes)
             if (rhinoObject.toThreejsJSON) {
                 try {
                     const loader = new THREE.BufferGeometryLoader();
@@ -357,12 +411,15 @@ function addGeometryToScene(tree, colorHex) {
                          threeObj = new THREE.Line(geo, material); 
                     }
                 } catch (e) {
-                    console.warn("Native toThreejsJSON failed, falling back to sampling...", e);
+                    // console.warn("Native toThreejsJSON failed...", e);
                 }
             }
 
-            // 2. Fallback: Manual Sampling (if native failed or not supported)
-            if (!threeObj && rhinoObject instanceof rhino.Curve) {
+            // 2. Fallback / Override for Curve: Use Custom CurveToThree for better precision
+            // If it's a Curve, we often prefer our manual extraction (Strategy 1 above) 
+            // over the default low-res tessellation from toThreejsJSON, especially for CNC.
+            if (rhinoObject instanceof rhino.Curve) {
+                // Regenerate using our high-precision method
                 threeObj = curveToThree(rhinoObject, material);
             }
 
@@ -374,6 +431,13 @@ function addGeometryToScene(tree, colorHex) {
             }
         });
     });
+}
+
+function isPointData(item) {
+    if (!item || !item.data) return false;
+    // Simple check: does the JSON data look like a point or is type "Rhino.Geometry.Point3d"?
+    // The 'type' field in the tree item is usually reliable.
+    return (item.type && item.type.includes("Point"));
 }
 
 // New helper to extract strings/logs from data tree
