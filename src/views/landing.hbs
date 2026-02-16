@@ -1,35 +1,273 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="utf-8">
-    <title>AppServer Portal</title>
+    <title>Cameron's Portfolio</title>
     <style>
-        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; display: flex; align-items: center; justify-content: center; height: 100vh; }
-        .container { text-align: center; max-width: 800px; }
-        h1 { color: #333; margin-bottom: 40px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; padding: 20px; }
-        .card { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 30px; transition: transform 0.2s, box-shadow 0.2s; text-decoration: none; color: inherit; display: flex; flex-direction: column; align-items: center; }
-        .card:hover { transform: translateY(-5px); box-shadow: 0 8px 12px rgba(0,0,0,0.15); }
-        .icon { font-size: 48px; margin-bottom: 15px; }
-        .title { font-size: 1.25em; font-weight: bold; color: #2196F3; margin-bottom: 10px; }
-        .desc { color: #666; font-size: 0.9em; line-height: 1.4; }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.2em;
+        }
+
+        /* Status Indicator Styles */
+        .status-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #ccc;
+            margin-right: 8px;
+            transition: background-color 0.3s;
+        }
+
+        .status-text {
+            color: #666;
+        }
+
+        .status-live {
+            background-color: #4CAF50;
+            box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+        }
+
+        .status-offline {
+            background-color: #F44336;
+        }
+
+        .status-connecting {
+            background-color: #FFC107;
+        }
+
+        .section-title {
+            font-size: 1.5em;
+            color: #2196F3;
+            border-bottom: 2px solid #2196F3;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+            margin-top: 50px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Updated card-image to support background images */
+        .card-image {
+            height: 200px;
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #eee;
+        }
+
+        .card-image-placeholder {
+            font-size: 3em;
+            color: #aaa;
+        }
+
+        .card-content {
+            padding: 25px;
+        }
+
+        .card-title {
+            font-size: 1.25em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .card-desc {
+            color: #666;
+            font-size: 0.95em;
+            line-height: 1.5;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 80px;
+            color: #888;
+            font-size: 0.9em;
+        }
     </style>
 </head>
+
 <body>
     <div class="container">
-        <h1>Parametric Ninja Apps</h1>
+        <header>
+            <h1>Cameron's Portfolio</h1>
+            <div class="subtitle">Computational Design & Engineering</div>
+
+            <div class="status-container" id="computeStatus">
+                <div class="status-dot" id="statusDot"></div>
+                <div class="status-text" id="statusText">Connecting to Compute Server...</div>
+            </div>
+        </header>
+
+        <div class="section-title">Live Projects</div>
         <div class="grid">
             <a href="/cnc" class="card">
-                <div class="icon">🛠️</div>
-                <div class="title">CNC Profiler</div>
-                <div class="desc">Generate GCode from DXF files using Rhino Compute.</div>
+                <div class="card-image" style="background-image: url('/cnc/preview.png');"></div>
+                <div class="card-content">
+                    <div class="card-title">CNC Profiler</div>
+                    <div class="card-desc">Interactive tool to generate GCode from DXF files using Rhino Compute.
+                        Demonstrates real-time geometry processing.</div>
+                </div>
             </a>
-            <a href="/health" class="card">
-                <div class="icon">❤️</div>
-                <div class="title">System Health</div>
-                <div class="desc">Monitor server status and run diagnostic tests.</div>
+            <!-- Add more live projects here -->
+        </div>
+
+        <div class="section-title">Project Archive</div>
+        <div class="grid">
+            <a href="/projects/sample-project" class="card">
+                <div class="card-image">☀️</div>
+                <div class="card-content">
+                    <div class="card-title">Solar Facade Optimization</div>
+                    <div class="card-desc">Algorithmic generation of facade patterns based on solar analysis data.</div>
+                </div>
             </a>
+            <!-- Add more project pages here -->
+            <!-- Experiments Section -->
+            <div class="section-title">Experiments</div>
+            <div class="grid" id="experiments-grid">
+                <div style="grid-column: 1/-1; text-align: center; color: #888; font-style: italic;">Loading
+                    experiments...</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            &copy; 2026 Cameron. Hand-crafted with Node.js and Rhino Compute.
         </div>
     </div>
+
+    <script>
+        // Compute Server Status Logic
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+
+        function updateStatus(state, message) {
+            statusDot.className = 'status-dot'; // Reset
+            statusText.textContent = message || 'Checking...';
+
+            if (state === 'live') {
+                statusDot.classList.add('status-live');
+            } else if (state === 'offline') {
+                statusDot.classList.add('status-offline');
+            } else {
+                // starting or any other state
+                statusDot.classList.add('status-connecting');
+            }
+        }
+
+        // 1. Trigger Wakeup on Load
+        fetch('/wakeup', { method: 'POST' })
+            .then(res => {
+                console.log('Wakeup trigger sent:', res.status);
+                // Optionally handle 200 vs 202
+            })
+            .catch(err => console.error('Wakeup trigger failed:', err));
+
+        // 2. Poll Status
+        function checkStatus() {
+            fetch('/wakeStatus')
+                .then(res => res.json())
+                .then(data => {
+                    updateStatus(data.status, data.message);
+                })
+                .catch(() => updateStatus('offline', 'AppServer Disconnected'));
+        }
+
+        // Initial check and interval
+        updateStatus('connecting', 'Connecting...');
+        checkStatus();
+        setInterval(checkStatus, 5000); // Poll every 5 seconds
+
+        // 3. Fetch and Display Experiments
+        fetch('/api/definitions')
+            .then(res => res.json())
+            .then(definitions => {
+                const grid = document.getElementById('experiments-grid');
+                grid.innerHTML = ''; // Clear loading message
+
+                const experiments = definitions.filter(d => d.category === 'experiment');
+
+                if (experiments.length === 0) {
+                    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #888;">No experiments found.</div>';
+                    return;
+                }
+
+                experiments.forEach(def => {
+                    const card = document.createElement('a');
+                    card.href = '/view/' + def.name; // Use auto-generated UI
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <div class="card-image" style="height: 150px; background: #f9f9f9; color: #ccc; font-size: 2em;">🧪</div>
+                        <div class="card-content">
+                            <div class="card-title" style="font-size: 1.1em;">${def.name}</div>
+                            <div class="card-desc" style="font-size: 0.9em;">
+                                Grasshopper Experiment
+                            </div>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            })
+            .catch(err => {
+                console.error("Failed to load experiments:", err);
+                document.getElementById('experiments-grid').innerHTML = '<div style="color:red; text-align:center;">Error loading experiments.</div>';
+            });
+    </script>
 </body>
+
 </html>

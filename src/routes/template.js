@@ -14,7 +14,7 @@ const getParams = require('../definitions.js').getParams
 /**
  * Show list of available definitions
  */
-router.get('/', async(req, res, next) => {
+router.get('/', async (req, res, next) => {
   view = {
     definitions: []
   }
@@ -31,9 +31,9 @@ router.get('/', async(req, res, next) => {
       console.log(err)
       next(err)
     }
-    if(data)
-      if(data.view) { view.definitions.push({ name: definition.name }) }
-    
+    if (data)
+      if (data.view) { view.definitions.push({ name: definition.name }) }
+
   }
   res.render('list', view)
 })
@@ -52,25 +52,26 @@ router.get('/:name', async (req, res, next) => {
   const fullUrl = req.protocol + '://' + req.get('host')
   let definitionPath = `${fullUrl}/definition/${definition.id}`
 
-  if(!Object.prototype.hasOwnProperty.call(definition, 'inputs')
-     && !Object.prototype.hasOwnProperty.call(definition, 'outputs')) {
+  if (!Object.prototype.hasOwnProperty.call(definition, 'inputs')
+    && !Object.prototype.hasOwnProperty.call(definition, 'outputs')) {
 
     let data
     try {
-      data = await getParams(definitionPath)
+      data = await getParams(definition.path)
+
+      // cache
+      definition.description = data.description
+      definition.inputs = data.inputs
+      definition.outputs = data.outputs
     } catch (err) {
       next(err)
+      return
     }
-
-    // cache
-    definition.description = data.description
-    definition.inputs = data.inputs
-    definition.outputs = data.outputs
-
   }
 
   view = {
     name: definition.name,
+    definitionJson: JSON.stringify(definition),
     inputs: []
   }
 
@@ -89,11 +90,10 @@ router.get('/:name', async (req, res, next) => {
         break;
       case 'Number':
         if (input.minimum !== undefined && input.minimum !== null
-            && input.maximum !== undefined && input.maximum !== null)
-        {
+          && input.maximum !== undefined && input.maximum !== null) {
 
           let step = 1
-          if( ( input.maximum - input.minimum ) < 1 ) {
+          if ((input.maximum - input.minimum) < 1) {
             step = 0.1
           }
           // use range input if min and max set

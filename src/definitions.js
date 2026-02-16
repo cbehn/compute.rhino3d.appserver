@@ -12,12 +12,12 @@ function extractDefaultValue(rawDefault) {
   // Expected: { InnerTree: { "{0}": [ { type: "...", data: "..." } ] } }
   if (rawDefault.InnerTree) {
     const branches = Object.values(rawDefault.InnerTree);
-    
+
     // Check if we have at least one branch with data
     if (branches.length > 0 && branches[0].length > 0) {
       const item = branches[0][0];
       // Return the raw data string (e.g., "0.15", "5", "True")
-      return item.data; 
+      return item.data;
     }
   }
 
@@ -57,16 +57,26 @@ function getFilesSync(dir) {
 }
 
 function registerDefinitions() {
-  const filesDir = path.join(__dirname, 'files/')
-  
-  if (!fs.existsSync(filesDir)) {
-    return [];
-  }
-
-  let files = getFilesSync(filesDir)
   let definitions = []
+
+  // 1. Experiments (Default files dir)
+  const filesDir = path.join(__dirname, 'files/')
+  scanDirectory(filesDir, 'experiment').forEach(def => definitions.push(def));
+
+  // 2. CNC Scripts
+  const cncDir = path.join(__dirname, 'pages/cnc/scripts/')
+  scanDirectory(cncDir, 'cnc').forEach(def => definitions.push(def));
+
+  return definitions
+}
+
+function scanDirectory(dir, category) {
+  if (!fs.existsSync(dir)) return [];
+
+  const files = getFilesSync(dir)
+  const results = []
   const baseNames = new Set()
-  
+
   files.forEach(file => {
     if (file.endsWith('.gh') || file.endsWith('.ghx')) {
       baseNames.add(path.parse(file).name)
@@ -75,32 +85,32 @@ function registerDefinitions() {
 
   baseNames.forEach(base => {
     let fileName = null
-    if (fs.existsSync(path.join(filesDir, base + '.gh'))) {
+    if (fs.existsSync(path.join(dir, base + '.gh'))) {
       fileName = base + '.gh'
-    } else if (fs.existsSync(path.join(filesDir, base + '.ghx'))) {
+    } else if (fs.existsSync(path.join(dir, base + '.ghx'))) {
       fileName = base + '.ghx'
     }
 
     if (fileName) {
-      const fullPath = path.join(filesDir, fileName)
-      const hash = md5File.sync(fullPath)
-      
-      definitions.push({
+      const fullPath = path.join(dir, fileName)
+      const hash = md5File.sync(fullPath) // ID is hash of content
+
+      results.push({
         name: fileName,
         id: hash,
-        path: fullPath
+        path: fullPath,
+        category: category
       })
     }
   })
-
-  return definitions
+  return results;
 }
 
 async function getParams(definitionPath) {
   // 1. Read the file fresh (No Caching as requested)
   const buffer = fs.readFileSync(definitionPath)
   const algo = buffer.toString('base64')
-  
+
   const requestBody = {
     "absolutetolerance": 0.01,
     "angletolerance": 1.0,
@@ -112,7 +122,7 @@ async function getParams(definitionPath) {
   }
 
   let url = process.env.RHINO_COMPUTE_URL
-  if (!url.endsWith('/')) url += '/' 
+  if (!url.endsWith('/')) url += '/'
   url += 'io'
 
   const apiKey = process.env.RHINO_COMPUTE_KEY
@@ -133,36 +143,36 @@ async function getParams(definitionPath) {
     }
 
     const result = await response.json()
-    
+
     // 2. Parse Inputs with Robust Handling
     // Handle casing variations (Inputs vs inputs vs inputNames)
     let rawInputs = result.inputs || result.Inputs || result.inputNames || [];
-    
+
     let inputs = rawInputs.map(input => {
-        // Normalize Fields
-        const name = input.Name || input.name;
-        const description = input.Description || input.description || "";
-        const paramType = input.ParamType || input.paramType || "String"; // Default to string if missing
+      // Normalize Fields
+      const name = input.Name || input.name;
+      const description = input.Description || input.description || "";
+      const paramType = input.ParamType || input.paramType || "String"; // Default to string if missing
 
-        // Robust Default Extraction
-        const rawDefault = (input.Default !== undefined) ? input.Default : input.default;
-        const rawDefaultValue = extractDefaultValue(rawDefault);
-        const defaultValue = castValue(rawDefaultValue, paramType);
+      // Robust Default Extraction
+      const rawDefault = (input.Default !== undefined) ? input.Default : input.default;
+      const rawDefaultValue = extractDefaultValue(rawDefault);
+      const defaultValue = castValue(rawDefaultValue, paramType);
 
-        // Normalize Ranges
-        // We prioritize explicit Minimum/Maximum fields for values
-        const minRaw = (input.Minimum !== undefined) ? input.Minimum : input.minimum;
-        const maxRaw = (input.Maximum !== undefined) ? input.Maximum : input.maximum;
-        
-        return {
-            name: name,
-            description: description,
-            paramType: paramType, // "Number", "Integer", "Boolean"
-            default: defaultValue,
-            minimum: castValue(minRaw, paramType),
-            maximum: castValue(maxRaw, paramType),
-            // We do NOT map AtLeast/AtMost to min/max anymore, as they usually refer to item counts, not value constraints.
-        };
+      // Normalize Ranges
+      // We prioritize explicit Minimum/Maximum fields for values
+      const minRaw = (input.Minimum !== undefined) ? input.Minimum : input.minimum;
+      const maxRaw = (input.Maximum !== undefined) ? input.Maximum : input.maximum;
+
+      return {
+        name: name,
+        description: description,
+        paramType: paramType, // "Number", "Integer", "Boolean"
+        default: defaultValue,
+        minimum: castValue(minRaw, paramType),
+        maximum: castValue(maxRaw, paramType),
+        // We do NOT map AtLeast/AtMost to min/max anymore, as they usually refer to item counts, not value constraints.
+      };
     });
 
     let outputs = result.outputs || result.Outputs || result.outputNames

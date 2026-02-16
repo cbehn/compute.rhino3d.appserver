@@ -1,9 +1,10 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import rhino3dm from 'rhino3dm'
+import { renderComputeControls, renderViewControls } from 'ui_components'
 
 // --- CONFIGURATION ---
-const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.9.1.gh'; 
+const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.9.1.gh';
 
 // --- GLOBALS ---
 let currentDefinition = null;
@@ -40,13 +41,13 @@ const modalCancelBtn = document.getElementById('modalCancelBtn');
 init();
 
 async function init() {
-    
+
     // --- Info Panel Logic (Right Side) ---
     const infoPanel = document.getElementById('info-panel');
     const infoToggle = document.getElementById('info-toggle');
     const closeInfo = document.getElementById('close-info');
 
-    if(infoToggle && infoPanel) {
+    if (infoToggle && infoPanel) {
         infoToggle.onclick = () => { infoPanel.style.right = '0'; };
         closeInfo.onclick = () => { infoPanel.style.right = '-350px'; };
     }
@@ -54,12 +55,12 @@ async function init() {
 
     const overlay = document.getElementById('startup-overlay');
     const statusText = document.getElementById('startup-status');
-    
+
     try {
         // 0. Fetch Template DXF (default)
         try {
             const dxfRes = await fetch('files/Template.dxf');
-            if(dxfRes.ok) {
+            if (dxfRes.ok) {
                 const blob = await dxfRes.blob();
                 defaultDxfB64 = await new Promise((resolve) => {
                     const reader = new FileReader();
@@ -70,7 +71,7 @@ async function init() {
             } else {
                 console.log("Template.dxf not found.");
             }
-        } catch(e) {
+        } catch (e) {
             console.log("Error loading Template.dxf", e);
         }
 
@@ -79,37 +80,31 @@ async function init() {
         console.log("Sending wakeup command...");
         fetch('/wakeup', { method: 'POST' }).catch(e => console.error("Wakeup trigger failed:", e));
 
-        // 2. Poll Health Check
-        let isHealthy = false;
-        while (!isHealthy) {
+        // 2. Poll Status via /wakeStatus
+        let isReady = false;
+        while (!isReady) {
             try {
-                const res = await fetch('/healthcheck');
-                if (res.ok) {
-                    isHealthy = true;
+                const res = await fetch('/wakeStatus');
+                const data = await res.json();
+
+                // step: 1=Azure, 2=Health, 3=Version
+                // status: 'offline', 'starting', 'live'
+
+                if (data.status === 'live') {
+                    isReady = true;
+                    statusText.innerText = "Compute Server is Ready!";
+                    console.log("WakeStatus: Live");
                 } else {
-                    const text = await res.text();
-                    console.log("Waiting for healthy response...", text);
-                    statusText.innerText = `Starting Compute... (${res.status})`;
+                    statusText.innerText = `Starting... (${data.message})`;
+                    console.log("WakeStatus:", data.status, data.message);
                 }
+
             } catch (err) {
-                console.log("Health check connection failed, retrying...");
+                console.log("Status check failed, retrying...", err);
+                statusText.innerText = "Connecting...";
             }
 
-            if (isHealthy) {
-                // FIXED ROUTE: /version instead of /api/version
-                const res = await fetch('/version');
-                if (!res.ok) {
-                    isHealthy = false;
-                    statusText.innerText = `Compute Server version check failed (${res.status})`;
-                    continue;
-                } else {
-                    const versionInfo = await res.json();
-                    statusText.innerText = `Compute Server is running (v${versionInfo.compute.server})`;
-                    console.log("Compute Server is healthy:", versionInfo);
-                }
-            }
-
-            if (!isHealthy) {
+            if (!isReady) {
                 // Wait 2 seconds before retrying
                 await new Promise(r => setTimeout(r, 2000));
             }
@@ -131,11 +126,12 @@ async function init() {
     try {
         const res = await fetch('/api/definitions');
         const definitions = await res.json();
-        
+
         let defaultExists = false;
 
         definitions.forEach(def => {
-            if (def.name.endsWith('.gh') || def.name.endsWith('.ghx')) {
+            // FILTER: Only show CNC category files
+            if (def.category === 'cnc') {
                 const option = document.createElement('option');
                 option.value = def.name;
                 option.innerText = def.name;
@@ -158,7 +154,7 @@ async function init() {
     }
 
     definitionSelect.addEventListener('change', (e) => {
-        if(e.target.value) {
+        if (e.target.value) {
             loadDefinition(e.target.value);
         }
     });
@@ -167,16 +163,10 @@ async function init() {
         handleViewSnap(e.detail);
     });
 
-    // --- Compute Controls Events ---
-    computeBtn.addEventListener('click', () => {
-        triggerSolve();
-    });
-
-    liveComputeToggle.addEventListener('change', (e) => {
-        liveCompute = e.target.checked;
-        if (liveCompute) {
-            triggerSolve(); // Sync when enabling
-        }
+    // --- SHARED UI: Compute Controls ---
+    renderComputeControls(document.getElementById('compute-container'), triggerSolve, (isLive) => {
+        liveCompute = isLive;
+        if (liveCompute) triggerSolve();
     });
 
     // --- Modal Events ---
@@ -188,12 +178,12 @@ async function init() {
         const newVal = Number(modalInput.value);
         if (activeParamName) {
             inputs[activeParamName] = newVal;
-            
+
             // Update Text Display
             if (activeDisplayEl) {
                 activeDisplayEl.innerText = newVal;
             }
-            
+
             // Update Slider if exists
             if (activeSliderEl) {
                 activeSliderEl.value = newVal;
@@ -215,7 +205,7 @@ async function init() {
 async function loadDefinition(name) {
     currentDefinition = name;
     container.innerHTML = '<p style="text-align:center">Loading parameters...</p>';
-    inputs = {}; 
+    inputs = {};
     gcodeResult = null;
     downloadBtn.disabled = true;
     warningContainer.innerHTML = ''; // Clear warnings
@@ -224,8 +214,8 @@ async function loadDefinition(name) {
         const res = await fetch(`/definition/${name}/info`);
         if (!res.ok) throw new Error("Could not find definition info");
         const metadata = await res.json();
-        
-        container.innerHTML = ''; 
+
+        container.innerHTML = '';
 
         const sortedInputs = metadata.inputs.sort((a, b) => {
             if (a.name === 'b64DXF') return -1;
@@ -282,17 +272,17 @@ async function triggerSolve() {
         });
 
         if (!res.ok) {
-            const errorText = await res.text(); 
+            const errorText = await res.text();
             throw new Error(errorText);
         }
 
         const data = await res.json();
-        
+
         // --- Performance Timing End ---
         lastSolveDuration = (performance.now() - startTime).toFixed(0);
 
         if (data.values === undefined && data.errors) {
-             throw new Error("Grasshopper Error: " + JSON.stringify(data.errors));
+            throw new Error("Grasshopper Error: " + JSON.stringify(data.errors));
         }
 
         handleResponse(data);
@@ -323,7 +313,7 @@ function curveToThree(rhinoCurve, material) {
             const pt = rhinoCurve.point(i);
             points.push(new THREE.Vector3(pt[0], pt[1], pt[2]));
         }
-    } 
+    }
     else if (rhinoCurve instanceof rhino.NurbsCurve && rhinoCurve.order === 2) {
         // Order 2 NURBS are also basically polylines (linear degree 1)
         const domain = rhinoCurve.domain;
@@ -337,7 +327,7 @@ function curveToThree(rhinoCurve, material) {
     else {
         // --- STRATEGY 2: High Res Sampling (Fallback for curved geometry) ---
         const domain = rhinoCurve.domain;
-        const count = 3000; 
+        const count = 3000;
         for (let i = 0; i <= count; i++) {
             const t = domain[0] + (i / count) * (domain[1] - domain[0]);
             const pt = rhinoCurve.pointAt(t);
@@ -358,30 +348,30 @@ function addGeometryToScene(tree, colorHex) {
     Object.values(tree).forEach(branch => {
         // Check for "List of Points" scenario (User Request)
         if (branch.length > 1 && isPointData(branch[0])) {
-             // Treat this whole branch as ONE connected polyline
-             const points = [];
-             branch.forEach(item => {
-                 const ptObj = decodeItem(item);
-                 if (ptObj) {
+            // Treat this whole branch as ONE connected polyline
+            const points = [];
+            branch.forEach(item => {
+                const ptObj = decodeItem(item);
+                if (ptObj) {
                     // Rhino.Point returns location as .location or [0],[1],[2]?
                     if (ptObj.location) {
-                         points.push(new THREE.Vector3(ptObj.location[0], ptObj.location[1], ptObj.location[2]));
+                        points.push(new THREE.Vector3(ptObj.location[0], ptObj.location[1], ptObj.location[2]));
                     } else if (Array.isArray(ptObj)) {
                         points.push(new THREE.Vector3(ptObj[0], ptObj[1], ptObj[2]));
                     } else {
-                         // Fallback for Point3d struct
-                         points.push(new THREE.Vector3(ptObj.x, ptObj.y, ptObj.z));
+                        // Fallback for Point3d struct
+                        points.push(new THREE.Vector3(ptObj.x, ptObj.y, ptObj.z));
                     }
-                 }
-             });
-             if (points.length > 1) {
-                 const geo = new THREE.BufferGeometry().setFromPoints(points);
-                 const line = new THREE.Line(geo, material);
-                 line.name = "generated_geo";
-                 line.rotation.x = -Math.PI / 2;
-                 scene.add(line);
-             }
-             return; // Done with this branch
+                }
+            });
+            if (points.length > 1) {
+                const geo = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(geo, material);
+                line.name = "generated_geo";
+                line.rotation.x = -Math.PI / 2;
+                scene.add(line);
+            }
+            return; // Done with this branch
         }
 
         // Standard behavior (List of Curves, Meshes, etc.)
@@ -397,13 +387,13 @@ function addGeometryToScene(tree, colorHex) {
                     const loader = new THREE.BufferGeometryLoader();
                     const json = rhinoObject.toThreejsJSON();
                     const geo = loader.parse(json);
-                    
-                    if(rhinoObject instanceof rhino.Curve) {
+
+                    if (rhinoObject instanceof rhino.Curve) {
                         threeObj = new THREE.Line(geo, material);
                     } else if (rhinoObject instanceof rhino.Mesh) {
-                         threeObj = new THREE.Mesh(geo, material);
+                        threeObj = new THREE.Mesh(geo, material);
                     } else {
-                         threeObj = new THREE.Line(geo, material); 
+                        threeObj = new THREE.Line(geo, material);
                     }
                 } catch (e) {
                     // console.warn("Native toThreejsJSON failed...", e);
@@ -460,12 +450,12 @@ function hasTreeData(tree) {
 
 function handleResponse(data) {
     const logBox = document.getElementById('log-content');
-    
+
     if (data.errors && data.errors.length > 0) {
         logBox.innerText = "⚠️ SERVER ERRORS:\n" + data.errors.join('\n');
         logBox.style.color = "red";
         document.getElementById('log-container').open = true;
-        return; 
+        return;
     }
 
     logBox.style.color = "#333";
@@ -480,7 +470,7 @@ function handleResponse(data) {
     gcodeResult = null;
     downloadBtn.disabled = true;
     downloadBtn.innerText = "Download GCode";
-    
+
     const previewBox = document.getElementById('gcode-preview');
     previewBox.style.display = 'none';
     previewBox.innerText = '';
@@ -495,11 +485,11 @@ function handleResponse(data) {
 
     // --- PROCESS VALUES BY NAME ---
     // Log, GCode, dxfLines, CutPath, Bad Lines, Unused Lines
-    
+
     data.values.forEach(item => {
         const name = item.ParamName;
         const tree = item.InnerTree;
-        
+
         if (!name || !tree) return;
 
         switch (name) {
@@ -509,24 +499,24 @@ function handleResponse(data) {
                     logBox.innerText += "\n" + logLines.join('\n');
                 }
                 break;
-            
+
             case 'GCode':
                 const gcodeLines = extractStrings(tree);
                 if (gcodeLines.length > 0) {
                     const joinedGcode = gcodeLines.join('\n');
-                    
+
                     // --- NEW CHECK: CATCH EMPTY GEOMETRY ERROR ---
                     if (joinedGcode.trim() === "Error: Input text is empty.") {
-                         const warn = document.createElement('div');
-                         warn.className = 'warning-msg';
-                         warn.innerText = "⚠️ Could not find geometry to process. Check geometry layer assignment";
-                         warningContainer.appendChild(warn);
-                         
-                         // Disable download
-                         gcodeResult = null;
-                         downloadBtn.disabled = true;
-                         downloadBtn.innerText = "Download GCode";
-                         previewBox.style.display = 'none';
+                        const warn = document.createElement('div');
+                        warn.className = 'warning-msg';
+                        warn.innerText = "⚠️ Could not find geometry to process. Check geometry layer assignment";
+                        warningContainer.appendChild(warn);
+
+                        // Disable download
+                        gcodeResult = null;
+                        downloadBtn.disabled = true;
+                        downloadBtn.innerText = "Download GCode";
+                        previewBox.style.display = 'none';
                     } else {
                         gcodeResult = joinedGcode;
                         downloadBtn.disabled = false;
@@ -539,19 +529,19 @@ function handleResponse(data) {
 
             case 'dxfLines':
                 // Black
-                addGeometryToScene(tree, 0x000000); 
+                addGeometryToScene(tree, 0x000000);
                 break;
-            
+
             case 'CutPath':
-            case 'Cut Path': 
+            case 'Cut Path':
                 // Cyan
-                addGeometryToScene(tree, 0x00FFFF); 
+                addGeometryToScene(tree, 0x00FFFF);
                 break;
-            
+
             case 'Bad Lines':
                 // Red
-                addGeometryToScene(tree, 0xFF0000); 
-                
+                addGeometryToScene(tree, 0xFF0000);
+
                 // --- FIXED WARNING LOGIC ---
                 if (hasTreeData(tree)) {
                     const warn = document.createElement('div');
@@ -560,10 +550,10 @@ function handleResponse(data) {
                     warningContainer.appendChild(warn);
                 }
                 break;
-            
+
             case 'Unused Lines':
                 // Magenta
-                addGeometryToScene(tree, 0xFF00FF); 
+                addGeometryToScene(tree, 0xFF00FF);
 
                 // --- FIXED WARNING LOGIC ---
                 if (hasTreeData(tree)) {
@@ -573,7 +563,7 @@ function handleResponse(data) {
                     warningContainer.appendChild(warn);
                 }
                 break;
-            
+
             default:
                 // Optional: Handle other named outputs if needed
                 break;
@@ -588,11 +578,11 @@ function handleResponse(data) {
 function createControl(param) {
     const wrapper = document.createElement('div');
     wrapper.className = 'control-group';
-    
+
     if (param.name === 'b64DXF') {
         const uploadWrapper = document.createElement('div');
         uploadWrapper.className = 'upload-btn-wrapper';
-        
+
         // --- DXF Requirements Help ---
         const helpLink = document.createElement('div');
         helpLink.style.cssText = "text-align: right; font-size: 0.8em; color: #666; cursor: pointer; margin-bottom: 5px;";
@@ -625,16 +615,16 @@ function createControl(param) {
             };
             reader.readAsDataURL(file);
         });
-        
+
         inputs[param.name] = null;
-        
+
         uploadWrapper.appendChild(btn);
         uploadWrapper.appendChild(fileInput);
         wrapper.appendChild(uploadWrapper);
 
     } else if (param.paramType === 'Integer' || param.paramType === 'Number') {
         const label = document.createElement('label');
-        label.innerText = param.name; 
+        label.innerText = param.name;
 
         // --- Dynamic Tooltip ---
         if (param.description) {
@@ -649,16 +639,16 @@ function createControl(param) {
         wrapper.appendChild(label);
 
         const isInt = (param.paramType === 'Integer');
-        
+
         // --- Robust Default Value Logic ---
         let rawDef = param.default;
-        
+
         if (rawDef === undefined || rawDef === null || rawDef === '') {
             rawDef = 0.01;
         }
-        
+
         let defaultValue = Number(rawDef);
-        
+
         if (Number.isNaN(defaultValue)) {
             defaultValue = 0.01;
         }
@@ -666,7 +656,7 @@ function createControl(param) {
         if (isInt) {
             defaultValue = Math.round(defaultValue);
         }
-        
+
         inputs[param.name] = defaultValue;
 
         const valDisplay = document.createElement('div');
@@ -682,12 +672,12 @@ function createControl(param) {
             slider.type = 'range';
             slider.min = param.minimum;
             slider.max = param.maximum;
-            slider.step = isInt ? 1 : 0.001; 
+            slider.step = isInt ? 1 : 0.001;
             slider.value = defaultValue;
 
             slider.addEventListener('input', (e) => {
                 const val = Number(e.target.value);
-                valDisplay.innerText = val; 
+                valDisplay.innerText = val;
                 inputs[param.name] = val;
             });
             slider.addEventListener('mouseup', () => {
@@ -700,11 +690,11 @@ function createControl(param) {
             activeParamName = param.name;
             activeDisplayEl = valDisplay;
             activeSliderEl = slider;
-            
+
             modalTitle.innerText = `Set ${param.name}`;
-            modalInput.value = inputs[param.name]; 
+            modalInput.value = inputs[param.name];
             modalInput.step = isInt ? 1 : 'any';
-            
+
             valueModal.style.display = 'flex';
             modalInput.focus();
         });
@@ -712,7 +702,7 @@ function createControl(param) {
     } else if (param.paramType === 'Boolean') {
         const label = document.createElement('label');
         label.innerText = param.name;
-        
+
         if (param.description) {
             const icon = document.createElement('span');
             icon.className = 'help-icon';
@@ -724,20 +714,20 @@ function createControl(param) {
         wrapper.appendChild(label);
         const toggle = document.createElement('div');
         toggle.className = 'toggle';
-        
+
         const defaultState = param.default === true;
         inputs[param.name] = defaultState;
-        
+
         // --- UPDATED: Hops Custom Labels with Z0 Override ---
         let trueLabel = param.maximum || "ON";
         let falseLabel = param.minimum || "OFF";
-        
+
         // CHANGED: Swapped Top/Bottom
         if (param.name.includes("Z0")) {
             trueLabel = "Bottom";
             falseLabel = "Top";
         }
-        
+
         toggle.innerText = defaultState ? trueLabel : falseLabel;
         if (defaultState) toggle.classList.add('active');
 
@@ -775,40 +765,43 @@ downloadBtn.onclick = () => {
 
 function init3D() {
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xe0e0e0); 
-    
+    scene.background = new THREE.Color(0xe0e0e0);
+
     const width = window.innerWidth - 300;
     const height = window.innerHeight;
     const aspect = width / height;
-    const viewSize = 110; 
+    const viewSize = 110;
 
     camera = new THREE.OrthographicCamera(
-        -viewSize * aspect / 2, 
-         viewSize * aspect / 2, 
-         viewSize / 2, 
-        -viewSize / 2, 
-        0.1, 
+        -viewSize * aspect / 2,
+        viewSize * aspect / 2,
+        viewSize / 2,
+        -viewSize / 2,
+        0.1,
         2000
     );
 
-    camera.position.set(60, 100, 60); 
+    camera.position.set(60, 100, 60);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(width, height); 
-    
+    renderer.setSize(width, height);
+
     const canvasContainer = document.getElementById('canvas-container');
-    canvasContainer.innerHTML = ''; 
+    canvasContainer.innerHTML = '';
     canvasContainer.appendChild(renderer.domElement);
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+
+    // --- SHARED UI: View Controls ---
+    renderViewControls(document.getElementById('view-controls-container'), camera, controls, THREE);
 
     controls.mouseButtons = {
         LEFT: THREE.MOUSE.PAN,
         MIDDLE: THREE.MOUSE.DOLLY,
         RIGHT: THREE.MOUSE.ROTATE
     };
-    
+
     const gridColor = 0x888888;
     const points = [];
     for (let x = -6; x <= 54; x += 1) { points.push(new THREE.Vector3(x, 0, 6), new THREE.Vector3(x, 0, -102)); }
@@ -846,7 +839,7 @@ function init3D() {
 }
 
 function onWindowResize() {
-    const width = window.innerWidth - 300; 
+    const width = window.innerWidth - 300;
     const height = window.innerHeight;
     const aspect = width / height;
     const viewSize = 110;
@@ -855,7 +848,7 @@ function onWindowResize() {
     camera.right = viewSize * aspect / 2;
     camera.top = viewSize / 2;
     camera.bottom = -viewSize / 2;
-    
+
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
 }
@@ -875,18 +868,18 @@ function decodeItem(item) {
 }
 
 function handleViewSnap(view) {
-    const dist = 500; 
-    const center = new THREE.Vector3(24, 0, -48); 
-    
-    switch(view) {
-        case 'top': 
-            camera.position.set(24, dist, -48); 
+    const dist = 500;
+    const center = new THREE.Vector3(24, 0, -48);
+
+    switch (view) {
+        case 'top':
+            camera.position.set(24, dist, -48);
             break;
-        case 'front': 
-            camera.position.set(24, 0, dist); 
+        case 'front':
+            camera.position.set(24, 0, dist);
             break;
-        case 'right': 
-            camera.position.set(dist, 0, -48); 
+        case 'right':
+            camera.position.set(dist, 0, -48);
             break;
         case 'left':
             camera.position.set(-dist, 0, -48);
@@ -897,12 +890,12 @@ function handleViewSnap(view) {
         case 'bottom':
             camera.position.set(24, -dist, -48);
             break;
-        case 'iso': 
-        default: 
-            camera.position.set(100, 100, 100); 
+        case 'iso':
+        default:
+            camera.position.set(100, 100, 100);
             break;
     }
-    
+
     controls.target.copy(center);
     controls.update();
 }
