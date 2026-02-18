@@ -95,18 +95,37 @@ function scanDirectory(dir, category) {
       const fullPath = path.join(dir, fileName)
       const hash = md5File.sync(fullPath) // ID is hash of content
 
-      results.push({
+      let def = {
         name: fileName,
         id: hash,
         path: fullPath,
         category: category
-      })
+      }
+
+      // Check for sidecar JSON
+      const jsonPath = path.join(dir, base + '.json')
+      if (fs.existsSync(jsonPath)) {
+        try {
+          const jsonContent = fs.readFileSync(jsonPath, 'utf8')
+          const metadata = JSON.parse(jsonContent)
+
+          if (metadata.description) def.description = metadata.description
+          if (metadata.date) def.date = metadata.date
+          if (metadata.version) def.version = metadata.version
+
+        } catch (err) {
+          console.error(`Error reading sidecar for ${fileName}:`, err)
+        }
+      }
+
+      results.push(def)
     }
   })
   return results;
 }
 
 async function getParams(definitionPath) {
+  console.log(`[getParams] Reading: ${definitionPath}`);
   // 1. Read the file fresh (No Caching as requested)
   const buffer = fs.readFileSync(definitionPath)
   const algo = buffer.toString('base64')
@@ -139,6 +158,7 @@ async function getParams(definitionPath) {
 
     if (!response.ok) {
       const errorText = await response.text()
+      console.error(`Compute error for ${definitionPath}: ${response.status} ${errorText}`);
       throw new Error(`Compute Server returned ${response.status}: ${errorText}`)
     }
 

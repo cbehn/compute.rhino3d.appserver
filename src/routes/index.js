@@ -57,7 +57,10 @@ router.get('/api/definitions', function (req, res, next) {
     definitions.forEach(def => {
       responseList.push({
         name: def.name,
-        category: def.category
+        category: def.category,
+        description: def.description,
+        date: def.date,
+        version: def.version
       })
     })
   }

@@ -64,8 +64,12 @@ router.get('/:name', async (req, res, next) => {
       definition.inputs = data.inputs
       definition.outputs = data.outputs
     } catch (err) {
-      next(err)
-      return
+      console.warn(`[Template Route] Could not get params for ${definition.name}, assuming offline. Error: ${err.message}`);
+      // Fallback to an offline state for the definition
+      definition.inputs = [];
+      definition.outputs = [];
+      definition.status = 'offline';
+      definition.error = err.message;
     }
   }
 

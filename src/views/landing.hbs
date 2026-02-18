@@ -140,6 +140,59 @@
             color: #888;
             font-size: 0.9em;
         }
+
+        /* Tooltip Styles */
+        .card {
+            position: relative;
+            /* For tooltip positioning */
+        }
+
+        .tooltip {
+            visibility: hidden;
+            background-color: #333;
+            color: #fff;
+            text-align: left;
+            border-radius: 6px;
+            padding: 10px;
+            position: absolute;
+            z-index: 10;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 250px;
+            font-size: 0.85em;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            /* Prevent tooltip from interfering with clicks */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .tooltip::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+
+        .card:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .tooltip-row {
+            margin-bottom: 4px;
+        }
+
+        .tooltip-label {
+            font-weight: bold;
+            color: #bbb;
+            margin-right: 5px;
+        }
     </style>
 </head>
 
@@ -258,6 +311,11 @@
                             <div class="card-desc" style="font-size: 0.9em;">
                                 Grasshopper Experiment
                             </div>
+                        </div>
+                        <div class="tooltip">
+                            ${def.description ? `<div class="tooltip-row">${def.description}</div>` : ''}
+                            ${def.date ? `<div class="tooltip-row"><span class="tooltip-label">Date:</span>${def.date}</div>` : ''}
+                            ${def.version ? `<div class="tooltip-row"><span class="tooltip-label">Version:</span>${def.version}</div>` : ''}
                         </div>
                     `;
                     grid.appendChild(card);
