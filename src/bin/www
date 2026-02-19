@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// Polyfill for Azure SDK
+global.crypto = require('crypto');
+
 /**
  * Module dependencies.
  */
@@ -45,7 +48,7 @@ function master() {
 
   // Run the check every 5 minutes (default) or configured interval
   const checkInterval = process.env.IDLE_CHECK_INTERVAL_MS || 5 * 60 * 1000;
-  
+
   setInterval(async () => {
     try {
       await azureService.checkIdleAndShutdown();
@@ -124,7 +127,7 @@ function onListening() {
     : 'port ' + addr.port;
   debug('Listening on ' + bind);
   console.log('Listening on ' + bind);
-  
+
   // Log viewer URL for convenience
   console.log(`Go to viewer: http://localhost:${addr.port}/view`);
 }
