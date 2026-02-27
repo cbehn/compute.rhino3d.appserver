@@ -168,11 +168,16 @@ app.use(function (req, res, next) {
 
 // error handler
 app.use(function (err, req, res, next) {
+  // Catch 413 Payload Too Large
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Payload Too Large', message: 'The uploaded file exceeds the 10MB limit. Please upload a smaller file.' });
+  }
+
   // set locals, only providing error in development
   res.locals.message = err.message
   console.error(err)
   res.locals.error = req.app.get('env') === 'development' ? err : {}
-  data = { message: err.message }
+  const data = { message: err.message }
   if (req.app.get('env') === 'development') {
     data.stack = err.stack
   }

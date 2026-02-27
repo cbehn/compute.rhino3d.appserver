@@ -10,12 +10,13 @@
 const express = require('express')
 const router = express.Router()
 const getParams = require('../definitions.js').getParams
+const azureService = require('../services/azure-service')
 
 /**
  * Show list of available definitions
  */
 router.get('/', async (req, res, next) => {
-  view = {
+  let view = {
     definitions: []
   }
   for (const definition of req.app.get('definitions')) {
@@ -52,6 +53,29 @@ router.get('/:name', async (req, res, next) => {
   const fullUrl = req.protocol + '://' + req.get('host')
   let definitionPath = `${fullUrl}/definition/${definition.id}`
 
+  // FAST FAIL & CACHE INVALIDATION: Check status before proceeding
+  try {
+    const status = await azureService.getWakeStatus();
+    if (status.status !== 'live') {
+      // Server is offline or starting. Ignore any cached parameters and serve the offline view immediately.
+      let view = {
+        name: definition.name,
+        definitionJson: JSON.stringify({ name: definition.name, status: status.status, error: status.message }),
+        inputs: []
+      };
+      return res.render('definition', view);
+    }
+  } catch (err) {
+    // Return offline view directly without mutating cache
+    let view = {
+      name: definition.name,
+      definitionJson: JSON.stringify({ name: definition.name, status: 'offline', error: err.message }),
+      inputs: []
+    };
+    return res.render('definition', view);
+  }
+
+  // Server is Live. If we don't have inputs cached, fetch them now.
   if (!Object.prototype.hasOwnProperty.call(definition, 'inputs')
     && !Object.prototype.hasOwnProperty.call(definition, 'outputs')) {
 
@@ -65,15 +89,17 @@ router.get('/:name', async (req, res, next) => {
       definition.outputs = data.outputs
     } catch (err) {
       console.warn(`[Template Route] Could not get params for ${definition.name}, assuming offline. Error: ${err.message}`);
-      // Fallback to an offline state for the definition
-      definition.inputs = [];
-      definition.outputs = [];
-      definition.status = 'offline';
-      definition.error = err.message;
+      // Return offline view directly without mutating cache
+      let view = {
+        name: definition.name,
+        definitionJson: JSON.stringify({ name: definition.name, status: 'offline', error: err.message }),
+        inputs: []
+      };
+      return res.render('definition', view);
     }
   }
 
-  view = {
+  let view = {
     name: definition.name,
     definitionJson: JSON.stringify(definition),
     inputs: []

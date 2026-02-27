@@ -1,9 +1,11 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import rhino3dm from 'rhino3dm'
-import { renderComputeControls, renderViewControls } from 'ui_components'
+import { renderComputeControls, renderViewControls, showStartupOverlayAndWait } from 'ui_components'
 
 // --- CONFIGURATION ---
+// IMPORTANT: This dictates the default definition loaded on startup.
+// Update this value when you publish a new version of the GH script.
 const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.9.1.gh';
 
 // --- GLOBALS ---
@@ -53,69 +55,28 @@ async function init() {
     }
     // ------------------------
 
-    const overlay = document.getElementById('startup-overlay');
-    const statusText = document.getElementById('startup-status');
-
+    // --- STARTUP OVERLAY ---
     try {
-        // 0. Fetch Template DXF (default)
-        try {
-            const dxfRes = await fetch('files/Template.dxf');
-            if (dxfRes.ok) {
-                const blob = await dxfRes.blob();
-                defaultDxfB64 = await new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result.split(',')[1]);
-                    reader.readAsDataURL(blob);
-                });
-                console.log("Template.dxf loaded internally.");
-            } else {
-                console.log("Template.dxf not found.");
-            }
-        } catch (e) {
-            console.log("Error loading Template.dxf", e);
-        }
-
-        // 1. Send Wake Up Command
-        statusText.innerText = "Waking up Compute Server...";
-        console.log("Sending wakeup command...");
-        fetch('/wakeup', { method: 'POST' }).catch(e => console.error("Wakeup trigger failed:", e));
-
-        // 2. Poll Status via /wakeStatus
-        let isReady = false;
-        while (!isReady) {
-            try {
-                const res = await fetch('/wakeStatus');
-                const data = await res.json();
-
-                // step: 1=Azure, 2=Health, 3=Version
-                // status: 'offline', 'starting', 'live'
-
-                if (data.status === 'live') {
-                    isReady = true;
-                    statusText.innerText = "Compute Server is Ready!";
-                    console.log("WakeStatus: Live");
-                } else {
-                    statusText.innerText = `Starting... (${data.message})`;
-                    console.log("WakeStatus:", data.status, data.message);
-                }
-
-            } catch (err) {
-                console.log("Status check failed, retrying...", err);
-                statusText.innerText = "Connecting...";
-            }
-
-            if (!isReady) {
-                // Wait 2 seconds before retrying
-                await new Promise(r => setTimeout(r, 2000));
-            }
-        }
+        await showStartupOverlayAndWait();
     } catch (err) {
-        statusText.innerText = "Error: " + err.message;
+        console.error("Failed to start compute server:", err);
         return; // Stop execution
     }
 
-    // 3. Server is ready, hide overlay
-    overlay.style.display = 'none';
+    // --- PRE-LOAD TEMPLATE DXF ---
+    try {
+        const dxfRes = await fetch('/public/template.dxf');
+        if (dxfRes.ok) {
+            const blob = await dxfRes.blob();
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                defaultDxfB64 = e.target.result.split(',')[1];
+            };
+            reader.readAsDataURL(blob);
+        }
+    } catch (err) {
+        console.warn("Failed to load template DXF:", err);
+    }
 
     // Load Rhino3dm
     rhino = await rhino3dm();
@@ -178,6 +139,7 @@ async function init() {
         const newVal = Number(modalInput.value);
         if (activeParamName) {
             inputs[activeParamName] = newVal;
+            disableDownload(); // Disable on manual edit
 
             // Update Text Display
             if (activeDisplayEl) {
@@ -243,6 +205,17 @@ async function loadDefinition(name) {
     }
 }
 
+function disableDownload() {
+    downloadBtn.disabled = true;
+    downloadBtn.innerText = "Download GCode (Calc Required)";
+    gcodeResult = null;
+    const previewBox = document.getElementById('gcode-preview');
+    if (previewBox) {
+        previewBox.style.display = 'none';
+        previewBox.innerText = '';
+    }
+}
+
 async function triggerSolve() {
     if (!currentDefinition) return;
 
@@ -252,7 +225,7 @@ async function triggerSolve() {
     }
 
     document.getElementById('loader').style.display = 'block';
-    downloadBtn.disabled = true;
+    disableDownload();
     downloadBtn.innerText = "Calculating...";
     warningContainer.innerHTML = ''; // Clear old warnings
 
@@ -480,7 +453,12 @@ function handleResponse(data) {
     if (scene) {
         const toRemove = [];
         scene.traverse(child => { if (child.name === "generated_geo") toRemove.push(child); });
-        toRemove.forEach(c => scene.remove(c));
+        toRemove.forEach(c => {
+            scene.remove(c);
+            // Critical Memory Leak Fix
+            if (c.geometry) c.geometry.dispose();
+            if (c.material) c.material.dispose();
+        });
     }
 
     // --- PROCESS VALUES BY NAME ---
@@ -590,7 +568,7 @@ function createControl(param) {
         helpLink.onclick = () => alert(
             "DXF REQUIREMENTS:\n" +
             "1. Units: Files must be in Inches.\n" +
-            "2. Layers: \n   - 'Outside': Exterior profile cuts.\n   - 'Inside': Interior holes/features.\n" +
+            "2. Layers: \n   - 'Outside': Exterior profile cuts.\n   - 'Inside': Interior holes/features.\n   - 'Center': Center lines for tracing.\n" +
             "3. Geometry: All curves must be closed loops.\n" +
             "4. Cleanup: Remove duplicate lines and text blocks."
         );
@@ -606,10 +584,13 @@ function createControl(param) {
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            disableDownload(); // Disable on new file selection
             btn.innerText = '✅ ' + file.name;
             const reader = new FileReader();
             reader.onload = (e) => {
-                inputs[param.name] = e.target.result.split(',')[1];
+                const b64Data = e.target.result.split(',')[1];
+                inputs[param.name] = b64Data;
+                defaultDxfB64 = b64Data; // Save uploaded DXF as the new default for session
                 // Always trigger solve on new upload
                 triggerSolve();
             };
@@ -679,6 +660,7 @@ function createControl(param) {
                 const val = Number(e.target.value);
                 valDisplay.innerText = val;
                 inputs[param.name] = val;
+                if (!liveCompute) disableDownload();
             });
             slider.addEventListener('mouseup', () => {
                 if (liveCompute) triggerSolve();
@@ -733,6 +715,7 @@ function createControl(param) {
 
         toggle.onclick = () => {
             inputs[param.name] = !inputs[param.name];
+            disableDownload();
             toggle.classList.toggle('active');
             toggle.innerText = inputs[param.name] ? trueLabel : falseLabel;
             if (liveCompute) triggerSolve();

@@ -10,6 +10,9 @@
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       overflow: hidden;
+      background-color: var(--base-100, #f5f5f5);
+      color: var(--base-content, #333);
+      transition: background-color 0.3s, color 0.3s;
     }
 
     #container {
@@ -20,39 +23,45 @@
 
     #controls {
       width: 350px;
-      background: #f5f5f5;
-      border-right: 1px solid #ddd;
+      background-color: var(--base-100, #f5f5f5);
+      border-right: 1px solid var(--border-color, #ddd);
       padding: 20px;
       overflow-y: auto;
       box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
       z-index: 10;
       display: flex;
       flex-direction: column;
+      transition: background-color 0.3s, border-color 0.3s;
     }
 
     #canvas-container {
       flex-grow: 1;
       position: relative;
-      background: linear-gradient(to bottom, #e0e0e0, #f0f0f0);
+      background-color: var(--base-100, #e0e0e0);
+      background-image: linear-gradient(to bottom, transparent, var(--panel-bg, rgba(0, 0, 0, 0.05)));
+      transition: background-color 0.3s;
     }
 
     /* Shared Styles Ported from CNC */
     .control-group {
       margin-bottom: 20px;
-      background: white;
+      background: var(--base-100, white);
       padding: 15px;
       border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 1px 3px var(--border-color, rgba(0, 0, 0, 0.1));
+      border: 1px solid var(--border-color, transparent);
+      transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
     }
 
     label {
       display: block;
       font-weight: 600;
       margin-bottom: 8px;
-      color: #333;
+      color: var(--base-content, #333);
       display: flex;
       align-items: center;
       justify-content: space-between;
+      transition: color 0.3s;
     }
 
     input[type=range] {
@@ -62,35 +71,37 @@
     }
 
     .val-display-static {
-      background: #eee;
+      background: var(--panel-bg, #eee);
+      border: 1px solid var(--border-color, transparent);
       padding: 2px 8px;
       border-radius: 4px;
       font-size: 0.9em;
       cursor: pointer;
-      color: #007aff;
+      color: var(--primary, #007aff);
+      transition: background-color 0.3s, border-color 0.3s;
     }
 
     .val-display-static:hover {
-      background: #e0e0e0;
+      background: var(--border-color, #e0e0e0);
       text-decoration: underline;
     }
 
     .toggle {
-      background: #e0e0e0;
+      background: var(--panel-bg, #e0e0e0);
       border-radius: 20px;
       padding: 5px 15px;
       cursor: pointer;
       text-align: center;
       font-weight: bold;
-      color: #666;
+      color: var(--base-content, #666);
       transition: all 0.3s;
       user-select: none;
     }
 
     .toggle.active {
-      background: #4CAF50;
-      color: white;
-      box-shadow: 0 2px 5px rgba(76, 175, 80, 0.4);
+      background: var(--primary, #4CAF50);
+      color: var(--base-100, white);
+      box-shadow: 0 2px 5px var(--primary, rgba(76, 175, 80, 0.4));
     }
 
     /* Modal Styles */
@@ -108,11 +119,13 @@
     }
 
     .modal-box {
-      background: white;
+      background: var(--base-100, white);
       padding: 25px;
       border-radius: 12px;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 10px 25px var(--border-color, rgba(0, 0, 0, 0.2));
       width: 300px;
+      color: var(--base-content, #333);
+      transition: background-color 0.3s, color 0.3s;
     }
 
     .modal-title {
@@ -137,13 +150,15 @@
     }
 
     .btn-primary {
-      background: #007aff;
-      color: white;
+      background: var(--primary, #007aff);
+      color: var(--base-100, white);
+      transition: background-color 0.3s, color 0.3s;
     }
 
     .btn-secondary {
-      background: #ddd;
-      color: #333;
+      background: var(--panel-bg, #ddd);
+      color: var(--base-content, #333);
+      transition: background-color 0.3s, color 0.3s;
     }
 
     /* Three.js Overlay Controls */
@@ -152,6 +167,18 @@
       top: 10px;
       right: 10px;
       z-index: 100;
+      background: var(--panel-bg, #f5f5f5);
+      /* Added background */
+      color: var(--base-content, #333);
+      /* Added color */
+      border-radius: 8px;
+      /* Added border-radius for consistency */
+      padding: 10px;
+      /* Added padding for better appearance */
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      /* Added subtle shadow */
+      transition: background-color 0.3s, color 0.3s, box-shadow 0.3s;
+      /* Added transition */
     }
 
     #loader {
@@ -220,113 +247,6 @@
     .max-w-xs {
       max-width: 20rem;
     }
-
-    /* STARTUP OVERLAY */
-    #startup-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 9999;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      background-color: #111;
-      font-family: 'Courier New', Courier, monospace;
-      text-transform: uppercase;
-      display: none;
-      /* Hidden by default */
-    }
-
-    .smpte-bars {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      z-index: -1;
-    }
-
-    .bar {
-      height: 100%;
-      flex: 1;
-    }
-
-    .b-white {
-      background: #c0c0c0;
-    }
-
-    .b-yellow {
-      background: #c0c000;
-    }
-
-    .b-cyan {
-      background: #00c0c0;
-    }
-
-    .b-green {
-      background: #00c000;
-    }
-
-    .b-magenta {
-      background: #c000c0;
-    }
-
-    .b-red {
-      background: #c00000;
-    }
-
-    .b-blue {
-      background: #0000c0;
-    }
-
-    .tv-message-box {
-      background: rgba(0, 0, 0, 0.85);
-      padding: 40px;
-      border: 2px solid white;
-      text-align: center;
-      color: white;
-      box-shadow: 10px 10px 0px rgba(0, 0, 0, 0.5);
-      max-width: 600px;
-    }
-
-    .tv-title {
-      font-size: 2em;
-      font-weight: bold;
-      margin-bottom: 20px;
-      letter-spacing: 2px;
-      color: #ffff00;
-      text-shadow: 2px 2px #ff0000;
-    }
-
-    .tv-subtitle {
-      font-size: 1.2em;
-      margin-bottom: 30px;
-      color: #00ffff;
-    }
-
-    .tv-blink {
-      animation: blink 1.5s infinite;
-      color: #ff00ff;
-      font-weight: bold;
-    }
-
-    @keyframes blink {
-      0% {
-        opacity: 1;
-      }
-
-      50% {
-        opacity: 0;
-      }
-
-      100% {
-        opacity: 1;
-      }
-    }
   </style>
 
   <!-- Import maps polyfill -->
@@ -347,26 +267,6 @@
 
 <body>
   <div id="loader"></div>
-
-  <!-- Startup Overlay -->
-  <div id="startup-overlay">
-    <div class="smpte-bars">
-      <div class="bar b-white"></div>
-      <div class="bar b-yellow"></div>
-      <div class="bar b-cyan"></div>
-      <div class="bar b-green"></div>
-      <div class="bar b-magenta"></div>
-      <div class="bar b-red"></div>
-      <div class="bar b-blue"></div>
-    </div>
-
-    <div class="tv-message-box">
-      <div class="tv-title">PLEASE STAND BY</div>
-      <div class="tv-subtitle">STARTING COMPUTE SERVER</div>
-      <div style="font-size: 0.9em; color: #ccc; margin-bottom: 20px;">ESTIMATED TIME: 1-2 MINUTES</div>
-      <div class="tv-blink" id="startup-status">INITIALIZING...</div>
-    </div>
-  </div>
 
   <!-- Value Entry Modal -->
   <div id="value-modal" class="modal-overlay">
@@ -391,12 +291,21 @@
       <!-- Compute Controls -->
       <div id="compute-container"></div>
 
-      <hr style="border: 0; border-top: 1px solid #ddd; margin: 10px 0 20px 0;">
+      <hr style="border: 0; border-top: 1px solid var(--border-color, #ddd); margin: 10px 0 20px 0;">
 
       <!-- Dynamic Inputs -->
       <div id="inputs-container"></div>
 
-      <div style="margin-top: auto; padding-top: 20px; color: #888; font-size: 0.8em; text-align: center;">
+      <!-- Output Log -->
+      <hr style="border: 0; border-top: 1px solid var(--border-color, #ddd); margin: 20px 0 10px 0;">
+      <h3 style="font-size: 1em; color: var(--base-content, #555); margin-bottom: 10px; transition: color 0.3s;">Output
+        Log</h3>
+      <div id="output-log"
+        style="flex-grow: 1; min-height: 100px; max-height: 250px; overflow-y: auto; background: var(--base-100, white); border: 1px solid var(--border-color, #ccc); border-radius: 6px; padding: 10px; font-family: monospace; font-size: 0.8em; margin-bottom: 20px; transition: background-color 0.3s, border-color 0.3s; color: var(--base-content, inherit);">
+        <div style="color: #aaa; font-style: italic;">Awaiting compute...</div>
+      </div>
+
+      <div style="margin-top: auto; padding-top: 5px; color: #888; font-size: 0.8em; text-align: center;">
         <a href="{{name}}" download="{{name}}.html" style="color:#007aff; text-decoration:none;">Download Logic
           (HTML)</a>
       </div>
@@ -413,12 +322,12 @@
     import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
     import { Rhino3dmLoader } from 'three/examples/jsm/loaders/3DMLoader'
     import rhino3dm from 'rhino3dm'
-    import { renderComputeControls, renderViewControls, renderThemeSelector, getThemePalette } from 'ui_components'
+    import { renderComputeControls, renderViewControls, renderThemeSelector, getThemePalette, showStartupOverlayAndWait, initThemes } from 'ui_components'
 
     // --- DATA INJECTION ---
     const rawDefinition = {{{ definitionJson }}}; // Inject JSON from server
     const definitionName = rawDefinition.name;
-    const paramDefs = rawDefinition.inputs || [];
+    let paramDefs = rawDefinition.inputs || [];
 
     // --- GLOBALS ---
     let inputs = {};
@@ -434,30 +343,31 @@
 
     async function init() {
 
-      // 0. Check Status
-      if (rawDefinition.status === 'offline') {
-        console.warn("Compute Server Offline. Initiating Wakeup...");
-        const overlay = document.getElementById('startup-overlay');
-        const statusText = document.getElementById('startup-status');
-        overlay.style.display = 'flex';
+      await initThemes();
 
-        await performWakeup(statusText);
+      // 0. Check Status
+      if (rawDefinition.status && rawDefinition.status !== 'live') {
+        console.warn("Compute Server not ready. Initiating Wakeup...");
+
+        try {
+          await showStartupOverlayAndWait();
+        } catch (e) {
+          console.error("Wakeup failed:", e);
+          return;
+        }
 
         // Once awake, fetch the REAL definition data
         try {
-          const res = await fetch(`/definition/${rawDefinition.name}/info`); // We can reuse the info endpoint logic or just reload
+          const res = await fetch(`/definition/${rawDefinition.name}/info`);
           if (res.ok) {
             const data = await res.json();
-            // Merge data into rawDefinition/paramDefs
-            // Actually, simplest is to reload the page now that server is ready
-            window.location.reload();
-            return;
+            // Update parameter definitions dynamically instead of reloading the page
+            paramDefs = data.inputs || [];
+            rawDefinition.status = 'live';
           }
         } catch (e) {
           console.error("Failed to fetch fresh definition", e);
         }
-
-        overlay.style.display = 'none';
       }
 
       // 1. Setup UI
@@ -488,39 +398,12 @@
       }
     }
 
-    async function performWakeup(statusText) {
-      // 1. Send Wake Up Command
-      statusText.innerText = "Waking up Compute Server...";
-      fetch('/wakeup', { method: 'POST' }).catch(e => console.error("Wakeup trigger failed:", e));
-
-      // 2. Poll Status via /wakeStatus
-      let isReady = false;
-      while (!isReady) {
-        try {
-          const res = await fetch('/wakeStatus');
-          const data = await res.json();
-
-          if (data.status === 'live') {
-            isReady = true;
-            statusText.innerText = "Compute Server is Ready!";
-          } else {
-            statusText.innerText = `Starting... (${data.message})`;
-          }
-        } catch (err) {
-          statusText.innerText = "Connecting...";
-        }
-
-        if (!isReady) {
-          await new Promise(r => setTimeout(r, 2000));
-        }
-      }
-    }
-
     function init3D() {
       const container = document.getElementById('canvas-container');
 
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0xf0f0f0); // Default light gray
+      // Transparent background so we can see CSS gradient behind canvas
+      scene.background = null;
 
       // Lighting
       const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
@@ -537,7 +420,8 @@
       camera.position.set(100, 100, 100);
 
       // Renderer
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setClearColor(0x000000, 0); // Transparent clear color
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(container.clientWidth, container.clientHeight);
       container.appendChild(renderer.domElement);
@@ -568,9 +452,6 @@
 
     // --- INPUT GENERATION (Ported) ---
     function createControl(param, container) {
-      // Only support primitives for now
-      if (param.paramType !== 'Integer' && param.paramType !== 'Number' && param.paramType !== 'Boolean') return;
-
       const wrapper = document.createElement('div');
       wrapper.className = 'control-group';
 
@@ -633,6 +514,19 @@
           if (liveCompute) triggerSolve();
         };
         wrapper.appendChild(toggle);
+      } else {
+        // Unsupported parameter type
+        const label = document.createElement('label');
+        label.innerText = param.name;
+        wrapper.appendChild(label);
+
+        const comingSoon = document.createElement('div');
+        comingSoon.style.color = '#888';
+        comingSoon.style.fontStyle = 'italic';
+        comingSoon.style.marginTop = '4px';
+        comingSoon.style.fontSize = '0.9em';
+        comingSoon.innerText = `Sorry, ${param.paramType} coming soon!`;
+        wrapper.appendChild(comingSoon);
       }
 
       container.appendChild(wrapper);
@@ -713,6 +607,45 @@
       }
     }
 
+    // --- HELPERS ---
+    function appendToOutputLog(paramName, text) {
+      const logContainer = document.getElementById('output-log');
+
+      // Clear placeholder on first append
+      if (logContainer.firstElementChild && logContainer.firstElementChild.innerText === 'Awaiting compute...') {
+        logContainer.innerHTML = '';
+      }
+
+      const entry = document.createElement('div');
+      entry.style.borderBottom = '1px dashed #eee';
+      entry.style.paddingBottom = '5px';
+      entry.style.marginBottom = '5px';
+
+      const timeSpan = document.createElement('span');
+      timeSpan.style.color = '#888';
+      timeSpan.style.marginRight = '8px';
+      timeSpan.innerText = '[' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ']';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.style.fontWeight = 'bold';
+      nameSpan.style.color = '#007aff';
+      nameSpan.style.marginRight = '8px';
+      nameSpan.innerText = paramName + ':';
+
+      const textSpan = document.createElement('span');
+      textSpan.style.color = '#333';
+      textSpan.innerText = (typeof text === 'object') ? JSON.stringify(text) : String(text);
+
+      entry.appendChild(timeSpan);
+      entry.appendChild(nameSpan);
+      entry.appendChild(textSpan);
+
+      logContainer.appendChild(entry);
+
+      // Auto-scroll to bottom
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
     function handleResponse(values) {
       // Import rhino3dm library (already loaded)
       rhino3dm().then(rhino => {
@@ -721,6 +654,7 @@
 
         values.forEach(item => {
           const tree = item.InnerTree;
+          const paramName = item.ParamName;
           if (!tree) return;
 
           // Pick a color for this output branch
@@ -740,47 +674,109 @@
               if (!chunk.data) return;
 
               try {
-                const rhinoObject = JSON.parse(chunk.data);
-                let threeObj = null;
+                // Attempt to parse as JSON (many Compute outputs are JSON strings)
+                let parsedData;
+                let isGeometry = false;
 
-                // Try standard loader first (meshes)
-                if (rhinoObject.type && (rhinoObject.type.includes("Mesh") || rhinoObject.type.includes("Brep"))) {
-                  const buffer = new Uint8Array(rhinoObject.data); // If it's binary... wait, compute returns serialized objects
-                  // Actually, compute returns common object JSON usually.
-                  // Let's rely on rhino3dm.CommonObject.decode
-                  const ro = rhino.CommonObject.decode(rhinoObject);
-
-                  // toThreejsJSON isn't always available on the WASM object directly same way
-                  // This part is tricky without the full loader logic.
-                  // Simplified approach: specific loader instructions or use the library helper
-
-                  // Let's use the simplest path: curves
+                try {
+                  parsedData = JSON.parse(chunk.data);
+                  // Basic check if the parsed object looks like Rhino geometry
+                  if (parsedData && (parsedData.type !== undefined || parsedData.version !== undefined || parsedData.archive3dm !== undefined)) {
+                    isGeometry = true;
+                  }
+                } catch (parseErr) {
+                  // Not JSON, just a raw string
+                  parsedData = chunk.data;
+                  isGeometry = false;
                 }
 
-                // Fallback: If it's just a Curve, we can reconstruct it
-                // For this prototype, let's assume standard Compute response structure
-                // which often requires decoding.
+                if (!isGeometry) {
+                  // --- LOG NON-GEOMETRY TEXT/DATA ---
+                  appendToOutputLog(paramName, parsedData);
+                  return; // Skip 3D rendering attempt
+                }
 
-                const ro = rhino.CommonObject.decode(rhinoObject);
-                if (ro) {
-                  if (ro instanceof rhino.Curve) {
-                    // Sample points
-                    const points = [];
-                    const count = 100;
-                    const domain = ro.domain;
-                    for (let i = 0; i <= count; i++) {
-                      const t = domain[0] + (i / count) * (domain[1] - domain[0]);
-                      const pt = ro.pointAt(t);
-                      points.push(new THREE.Vector3(pt[0], pt[1], pt[2]));
+                // --- 3D RENDERING LOGIC ---
+                const rhinoObject = parsedData;
+                let threeObj = null;
+
+                // Try to use true native THREE.js JSON parsing if available
+                if (rhinoObject.toThreejsJSON) {
+                  try {
+                    const loader = new THREE.BufferGeometryLoader();
+                    const json = rhinoObject.toThreejsJSON();
+                    const geo = loader.parse(json);
+
+                    if (rhinoObject.type && rhinoObject.type.includes("Mesh")) {
+                      threeObj = new THREE.Mesh(geo, meshMaterial);
+                    } else {
+                      threeObj = new THREE.Line(geo, material);
                     }
-                    const geo = new THREE.BufferGeometry().setFromPoints(points);
-                    threeObj = new THREE.Line(geo, material);
+                  } catch (e) {
+                    console.warn("Native toThreejsJSON failed...", e);
+                  }
+                }
 
-                  } else if (ro instanceof rhino.Mesh) {
-                    // Mesh conversion logic
-                    // ... (omitted for brevity, requires heavier lifting)
-                    // Placeholder box
-                    // threeObj = new THREE.Mesh(new THREE.BoxGeometry(10,10,10), meshMaterial);
+                // Fallback: If it's a Curve and previous step failed or didn't exist
+                if (!threeObj) {
+                  const ro = rhino.CommonObject.decode(rhinoObject);
+                  if (ro) {
+                    if (ro instanceof rhino.Curve) {
+                      // Sample points
+                      const points = [];
+                      const count = 100;
+                      const domain = ro.domain;
+                      for (let i = 0; i <= count; i++) {
+                        const t = domain[0] + (i / count) * (domain[1] - domain[0]);
+                        const pt = ro.pointAt(t);
+                        points.push(new THREE.Vector3(pt[0], pt[1], pt[2]));
+                      }
+                      const geo = new THREE.BufferGeometry().setFromPoints(points);
+                      threeObj = new THREE.Line(geo, material);
+
+                    } else if (ro instanceof rhino.Mesh) {
+                      try {
+                        const vertices = ro.vertices();
+                        const faces = ro.faces();
+                        const count = vertices.count;
+                        const fcount = faces.count;
+
+                        const positions = [];
+                        for (let i = 0; i < count; i++) {
+                          const pt = vertices.get(i);
+                          positions.push(pt[0], pt[1], pt[2]);
+                        }
+
+                        const indices = [];
+                        for (let i = 0; i < fcount; i++) {
+                          const face = faces.get(i);
+                          indices.push(face[0], face[1], face[2]);
+                          if (face[2] !== face[3]) {
+                            indices.push(face[2], face[3], face[0]);
+                          }
+                        }
+
+                        const geo = new THREE.BufferGeometry();
+                        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                        geo.setIndex(indices);
+                        geo.computeVertexNormals();
+
+                        threeObj = new THREE.Mesh(geo, meshMaterial);
+
+                        vertices.delete();
+                        faces.delete();
+                      } catch (e) {
+                        console.warn("Manual mesh decoding failed:", e);
+                      }
+                    } else if (ro instanceof rhino.Point) {
+                      const pt = ro.location;
+                      const geo = new THREE.BufferGeometry();
+                      geo.setAttribute('position', new THREE.Float32BufferAttribute([pt[0], pt[1], pt[2]], 3));
+                      const dotMaterial = new THREE.PointsMaterial({ color: color, size: 3, sizeAttenuation: false });
+                      threeObj = new THREE.Points(geo, dotMaterial);
+                    } else if (ro instanceof rhino.Brep) {
+                      console.warn("Brep detected but without native toThreejsJSON. Native rendering requires meshing Breps first.");
+                    }
                   }
                 }
 
@@ -791,7 +787,7 @@
                 }
 
               } catch (e) {
-                console.warn("Failed to decode object", e);
+                console.warn("Failed to process object", e);
               }
             });
           });
