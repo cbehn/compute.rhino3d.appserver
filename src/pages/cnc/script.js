@@ -65,7 +65,7 @@ async function init() {
 
     // --- PRE-LOAD TEMPLATE DXF ---
     try {
-        const dxfRes = await fetch('/public/template.dxf');
+        const dxfRes = await fetch('/pages/cnc/files/Template.dxf');
         if (dxfRes.ok) {
             const blob = await dxfRes.blob();
             const reader = new FileReader();

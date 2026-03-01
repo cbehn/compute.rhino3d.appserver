@@ -415,6 +415,13 @@
       dirLight.castShadow = true;
       scene.add(dirLight);
 
+      // Add a 100x100 grid centered on the origin
+      const gridHelper = new THREE.GridHelper(100, 100);
+      // Optional: adjust grid colors if needed, e.g., slightly transparent, or default is fine.
+      // The grid is on the XZ plane by default, which matches Rhino's XY plane 
+      // since we rotate Rhino geometry by Math.PI/2 on the X axis.
+      scene.add(gridHelper);
+
       // Camera
       camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 10000);
       camera.position.set(100, 100, 100);
@@ -630,7 +637,7 @@
       nameSpan.style.fontWeight = 'bold';
       nameSpan.style.color = '#007aff';
       nameSpan.style.marginRight = '8px';
-      nameSpan.innerText = paramName + ':';
+      nameSpan.innerText = paramName ? paramName + ':' : 'Sys:';
 
       const textSpan = document.createElement('span');
       textSpan.style.color = '#333';
@@ -651,6 +658,47 @@
       rhino3dm().then(rhino => {
 
         let colorIdx = 0;
+        let totalSuccessfullyLoaded = 0;
+        let totalFailedToLoad = 0;
+
+        // Helper to convert rhino mesh to THREE mesh
+        const rhinoMeshToThreejs = (mesh, material) => {
+          try {
+            const vertices = mesh.vertices();
+            const faces = mesh.faces();
+            const count = vertices.count;
+            const fcount = faces.count;
+
+            const positions = [];
+            for (let i = 0; i < count; i++) {
+              const pt = vertices.get(i);
+              positions.push(pt[0], pt[1], pt[2]);
+            }
+
+            const indices = [];
+            for (let i = 0; i < fcount; i++) {
+              const face = faces.get(i);
+              indices.push(face[0], face[1], face[2]);
+              if (face[2] !== face[3]) {
+                indices.push(face[2], face[3], face[0]);
+              }
+            }
+
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geo.setIndex(indices);
+            geo.computeVertexNormals();
+
+            const threeMesh = new THREE.Mesh(geo, material);
+
+            vertices.delete();
+            faces.delete();
+            return threeMesh;
+          } catch (e) {
+            console.warn("Manual mesh decoding failed:", e);
+            return null;
+          }
+        };
 
         values.forEach(item => {
           const tree = item.InnerTree;
@@ -669,38 +717,42 @@
             roughness: 0.8
           });
 
+          // Metrics for this specific parameter
+          let paramStats = {};
+
           Object.values(tree).forEach(branch => {
             branch.forEach(chunk => {
               if (!chunk.data) return;
 
+              let typeName = "unknown";
+              let threeObj = null;
+
               try {
-                // Attempt to parse as JSON (many Compute outputs are JSON strings)
                 let parsedData;
                 let isGeometry = false;
 
                 try {
                   parsedData = JSON.parse(chunk.data);
-                  // Basic check if the parsed object looks like Rhino geometry
                   if (parsedData && (parsedData.type !== undefined || parsedData.version !== undefined || parsedData.archive3dm !== undefined)) {
                     isGeometry = true;
                   }
                 } catch (parseErr) {
-                  // Not JSON, just a raw string
                   parsedData = chunk.data;
                   isGeometry = false;
                 }
 
                 if (!isGeometry) {
-                  // --- LOG NON-GEOMETRY TEXT/DATA ---
+                  // Not geometry, just text or data
+                  typeName = "text/data";
+                  paramStats[typeName] = (paramStats[typeName] || 0) + 1;
                   appendToOutputLog(paramName, parsedData);
-                  return; // Skip 3D rendering attempt
+                  return;
                 }
 
-                // --- 3D RENDERING LOGIC ---
                 const rhinoObject = parsedData;
-                let threeObj = null;
+                typeName = rhinoObject.type || "Geometry";
 
-                // Try to use true native THREE.js JSON parsing if available
+                // Native THREE mapping
                 if (rhinoObject.toThreejsJSON) {
                   try {
                     const loader = new THREE.BufferGeometryLoader();
@@ -717,12 +769,13 @@
                   }
                 }
 
-                // Fallback: If it's a Curve and previous step failed or didn't exist
+                // Rhino3dm mapping fallback
                 if (!threeObj) {
                   const ro = rhino.CommonObject.decode(rhinoObject);
                   if (ro) {
+                    typeName = ro.constructor.name || typeName;
+
                     if (ro instanceof rhino.Curve) {
-                      // Sample points
                       const points = [];
                       const count = 100;
                       const domain = ro.domain;
@@ -735,39 +788,7 @@
                       threeObj = new THREE.Line(geo, material);
 
                     } else if (ro instanceof rhino.Mesh) {
-                      try {
-                        const vertices = ro.vertices();
-                        const faces = ro.faces();
-                        const count = vertices.count;
-                        const fcount = faces.count;
-
-                        const positions = [];
-                        for (let i = 0; i < count; i++) {
-                          const pt = vertices.get(i);
-                          positions.push(pt[0], pt[1], pt[2]);
-                        }
-
-                        const indices = [];
-                        for (let i = 0; i < fcount; i++) {
-                          const face = faces.get(i);
-                          indices.push(face[0], face[1], face[2]);
-                          if (face[2] !== face[3]) {
-                            indices.push(face[2], face[3], face[0]);
-                          }
-                        }
-
-                        const geo = new THREE.BufferGeometry();
-                        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-                        geo.setIndex(indices);
-                        geo.computeVertexNormals();
-
-                        threeObj = new THREE.Mesh(geo, meshMaterial);
-
-                        vertices.delete();
-                        faces.delete();
-                      } catch (e) {
-                        console.warn("Manual mesh decoding failed:", e);
-                      }
+                      threeObj = rhinoMeshToThreejs(ro, meshMaterial);
                     } else if (ro instanceof rhino.Point) {
                       const pt = ro.location;
                       const geo = new THREE.BufferGeometry();
@@ -775,23 +796,64 @@
                       const dotMaterial = new THREE.PointsMaterial({ color: color, size: 3, sizeAttenuation: false });
                       threeObj = new THREE.Points(geo, dotMaterial);
                     } else if (ro instanceof rhino.Brep) {
-                      console.warn("Brep detected but without native toThreejsJSON. Native rendering requires meshing Breps first.");
+                      const faces = ro.faces();
+                      const meshGroup = new THREE.Group();
+                      for (let i = 0; i < faces.count; i++) {
+                        const face = faces.get(i);
+                        const mesh = face.getMesh(rhino.MeshType.Any);
+                        if (mesh) {
+                          const threeMesh = rhinoMeshToThreejs(mesh, meshMaterial);
+                          if (threeMesh) meshGroup.add(threeMesh);
+                          mesh.delete();
+                        }
+                        face.delete();
+                      }
+                      faces.delete();
+
+                      if (meshGroup.children.length > 0) {
+                        threeObj = meshGroup;
+                        typeName = `Brep (extracted ${meshGroup.children.length} meshes)`;
+                      } else {
+                        console.warn("Brep detected but no render meshes could be extracted.");
+                      }
                     }
+                    ro.delete(); // cleanup
                   }
                 }
 
+                paramStats[typeName] = (paramStats[typeName] || 0) + 1;
+
                 if (threeObj) {
+                  totalSuccessfullyLoaded++;
                   threeObj.name = "generated_geo";
                   threeObj.rotation.x = -Math.PI / 2; // Flip Y/Z for ThreeJS
                   scene.add(threeObj);
+                } else {
+                  totalFailedToLoad++;
                 }
 
               } catch (e) {
+                paramStats[typeName] = (paramStats[typeName] || 0) + 1;
+                totalFailedToLoad++;
                 console.warn("Failed to process object", e);
               }
             });
           });
+
+          // Summary string for this parameter
+          let summaryStrParts = [];
+          for (const [t, count] of Object.entries(paramStats)) {
+            summaryStrParts.push(`${count} ${t}`);
+          }
+          if (summaryStrParts.length > 0) {
+            appendToOutputLog(paramName, summaryStrParts.join(", "));
+          }
         });
+
+        // Add overall status tally
+        if (totalSuccessfullyLoaded > 0 || totalFailedToLoad > 0) {
+          appendToOutputLog("", `${totalSuccessfullyLoaded} items successfully loaded, ${totalFailedToLoad} items failed to load.`);
+        }
       });
     }
 
