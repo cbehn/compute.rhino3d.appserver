@@ -65,14 +65,17 @@ async function init() {
 
     // --- PRE-LOAD TEMPLATE DXF ---
     try {
-        const dxfRes = await fetch('/pages/cnc/files/Template.dxf');
+        const dxfRes = await fetch('/cnc/files/Template.dxf');
         if (dxfRes.ok) {
             const blob = await dxfRes.blob();
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                defaultDxfB64 = e.target.result.split(',')[1];
-            };
-            reader.readAsDataURL(blob);
+            await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    defaultDxfB64 = e.target.result.split(',')[1];
+                    resolve();
+                };
+                reader.readAsDataURL(blob);
+            });
         }
     } catch (err) {
         console.warn("Failed to load template DXF:", err);

@@ -161,6 +161,64 @@
       transition: background-color 0.3s, color 0.3s;
     }
 
+    /* Layer Key Styles */
+    .layer-key-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px;
+      margin-bottom: 5px;
+      background: var(--base-100, white);
+      border: 1px solid var(--border-color, #ddd);
+      border-radius: 6px;
+      transition: background-color 0.3s, border-color 0.3s;
+    }
+
+    .layer-color-swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      margin-right: 10px;
+      display: inline-block;
+    }
+
+    .layer-name {
+      flex-grow: 1;
+      font-weight: 500;
+      color: var(--base-content, #333);
+      font-size: 0.9em;
+    }
+
+    .layer-toggle {
+      width: 30px;
+      height: 16px;
+      background: var(--panel-bg, #ccc);
+      border-radius: 10px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .layer-toggle.active {
+      background: var(--primary, #4CAF50);
+    }
+
+    .layer-toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 12px;
+      height: 12px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.3s;
+    }
+
+    .layer-toggle.active::after {
+      transform: translateX(14px);
+    }
+
     /* Three.js Overlay Controls */
     #view-controls {
       position: absolute;
@@ -293,6 +351,9 @@
 
       <hr style="border: 0; border-top: 1px solid var(--border-color, #ddd); margin: 10px 0 20px 0;">
 
+      <!-- Layer Key -->
+      <div id="layer-key-container" style="margin-bottom: 20px;"></div>
+
       <!-- Dynamic Inputs -->
       <div id="inputs-container"></div>
 
@@ -337,6 +398,33 @@
     let activeSliderEl = null;
     let liveCompute = false;
     let currentPalette = getThemePalette('light');
+    let outputLayers = {}; // Store { colorIdx, threeObjects: [], colorSwatches: [] }
+
+    function updateThemeColors() {
+      if (!scene) return;
+      for (const [paramName, layerData] of Object.entries(outputLayers)) {
+        const color = currentPalette[layerData.colorIdx % currentPalette.length];
+
+        // Update UI Swatches
+        layerData.colorSwatches.forEach(swatch => swatch.style.backgroundColor = color);
+
+        // Update Three.js Materials
+        layerData.threeObjects.forEach(obj => {
+          obj.traverse((child) => {
+            if (child.isMesh || child.isLine || child.isPoints) {
+              if (child.material) {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(m => { m.color.set(color); m.needsUpdate = true; });
+                } else {
+                  child.material.color.set(color);
+                  child.material.needsUpdate = true;
+                }
+              }
+            }
+          });
+        });
+      }
+    }
 
     // --- INIT ---
     init();
@@ -373,8 +461,7 @@
       // 1. Setup UI
       renderThemeSelector(document.getElementById('theme-container'), (theme) => {
         currentPalette = getThemePalette(theme);
-        // Re-compute colors if we have geometry? For now just trigger solve if live
-        if (liveCompute || scene.getObjectByName("generated_geo")) triggerSolve();
+        updateThemeColors();
       });
 
       renderComputeControls(document.getElementById('compute-container'), triggerSolve, (isLive) => {
@@ -424,7 +511,11 @@
 
       // Camera
       camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 10000);
-      camera.position.set(100, 100, 100);
+      if (rawDefinition.camera && rawDefinition.camera.position) {
+        camera.position.set(...rawDefinition.camera.position);
+      } else {
+        camera.position.set(100, 100, 100);
+      }
 
       // Renderer
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -435,6 +526,9 @@
 
       // Controls
       controls = new OrbitControls(camera, renderer.domElement);
+      if (rawDefinition.camera && rawDefinition.camera.target) {
+        controls.target.set(...rawDefinition.camera.target);
+      }
       controls.enableDamping = true;
 
       // View Controls Overlay
@@ -602,6 +696,10 @@
         scene.traverse(child => { if (child.name === "generated_geo") toRemove.push(child); });
         toRemove.forEach(c => scene.remove(c));
 
+        outputLayers = {};
+        const keyContainer = document.getElementById('layer-key-container');
+        if (keyContainer) keyContainer.innerHTML = '';
+
         if (data.values) {
           handleResponse(data.values);
         }
@@ -659,6 +757,7 @@
 
         let colorIdx = 0;
         let totalSuccessfullyLoaded = 0;
+        const layerKeyContainer = document.getElementById('layer-key-container');
         let totalFailedToLoad = 0;
 
         // Helper to convert rhino mesh to THREE mesh
@@ -700,14 +799,75 @@
           }
         };
 
+        // Helper to convert rhino curve to THREE line
+        const rhinoCurveToThreejs = (curve, material) => {
+          const points = [];
+          const count = 100;
+          const domain = curve.domain;
+          for (let i = 0; i <= count; i++) {
+            const t = domain[0] + (i / count) * (domain[1] - domain[0]);
+            const pt = curve.pointAt(t);
+            points.push(new THREE.Vector3(pt[0], pt[1], pt[2]));
+          }
+          const geo = new THREE.BufferGeometry().setFromPoints(points);
+          return new THREE.Line(geo, material);
+        };
+
         values.forEach(item => {
           const tree = item.InnerTree;
           const paramName = item.ParamName;
           if (!tree) return;
 
           // Pick a color for this output branch
+          const currentLayerIdx = colorIdx;
           const color = currentPalette[colorIdx % currentPalette.length];
           colorIdx++;
+
+          const layerData = {
+            colorIdx: currentLayerIdx,
+            threeObjects: [],
+            colorSwatches: []
+          };
+          outputLayers[paramName] = layerData;
+
+          // Build Key UI
+          if (layerKeyContainer) {
+            const keyItem = document.createElement('div');
+            keyItem.className = 'layer-key-item';
+
+            const swatchCombo = document.createElement('div');
+            swatchCombo.style.display = 'flex';
+            swatchCombo.style.alignItems = 'center';
+
+            const swatch = document.createElement('div');
+            swatch.className = 'layer-color-swatch';
+            swatch.style.backgroundColor = color;
+            layerData.colorSwatches.push(swatch);
+
+            const nameLabel = document.createElement('div');
+            nameLabel.className = 'layer-name';
+            nameLabel.innerText = paramName;
+
+            swatchCombo.appendChild(swatch);
+            swatchCombo.appendChild(nameLabel);
+
+            const toggleBtn = document.createElement('div');
+            toggleBtn.className = 'layer-toggle active';
+            toggleBtn.onclick = () => {
+              const isActive = toggleBtn.classList.contains('active');
+              if (isActive) {
+                toggleBtn.classList.remove('active');
+                layerData.threeObjects.forEach(obj => obj.visible = false);
+              } else {
+                toggleBtn.classList.add('active');
+                layerData.threeObjects.forEach(obj => obj.visible = true);
+              }
+            };
+
+            keyItem.appendChild(swatchCombo);
+            keyItem.appendChild(toggleBtn);
+            layerKeyContainer.appendChild(keyItem);
+          }
 
           const material = new THREE.LineBasicMaterial({ color: color });
           const meshMaterial = new THREE.MeshStandardMaterial({
@@ -776,17 +936,7 @@
                     typeName = ro.constructor.name || typeName;
 
                     if (ro instanceof rhino.Curve) {
-                      const points = [];
-                      const count = 100;
-                      const domain = ro.domain;
-                      for (let i = 0; i <= count; i++) {
-                        const t = domain[0] + (i / count) * (domain[1] - domain[0]);
-                        const pt = ro.pointAt(t);
-                        points.push(new THREE.Vector3(pt[0], pt[1], pt[2]));
-                      }
-                      const geo = new THREE.BufferGeometry().setFromPoints(points);
-                      threeObj = new THREE.Line(geo, material);
-
+                      threeObj = rhinoCurveToThreejs(ro, material);
                     } else if (ro instanceof rhino.Mesh) {
                       threeObj = rhinoMeshToThreejs(ro, meshMaterial);
                     } else if (ro instanceof rhino.Point) {
@@ -814,7 +964,22 @@
                         threeObj = meshGroup;
                         typeName = `Brep (extracted ${meshGroup.children.length} meshes)`;
                       } else {
-                        console.warn("Brep detected but no render meshes could be extracted.");
+                        // Fallback to plotting edges as wireframe
+                        const edges = ro.edges();
+                        if (edges.count > 0) {
+                          const edgeGroup = new THREE.Group();
+                          for (let i = 0; i < edges.count; i++) {
+                            const curve = edges.get(i);
+                            const threeCurve = rhinoCurveToThreejs(curve, material);
+                            if (threeCurve) edgeGroup.add(threeCurve);
+                            curve.delete();
+                          }
+                          threeObj = edgeGroup;
+                          typeName = `Brep (wireframe, ${edges.count} edges)`;
+                        } else {
+                          console.warn("Brep detected but no render meshes or edges could be extracted.");
+                        }
+                        edges.delete();
                       }
                     }
                     ro.delete(); // cleanup
@@ -828,6 +993,7 @@
                   threeObj.name = "generated_geo";
                   threeObj.rotation.x = -Math.PI / 2; // Flip Y/Z for ThreeJS
                   scene.add(threeObj);
+                  layerData.threeObjects.push(threeObj);
                 } else {
                   totalFailedToLoad++;
                 }
