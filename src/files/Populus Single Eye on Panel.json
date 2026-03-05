@@ -4,14 +4,18 @@
     "version": "2.18",
     "camera": {
         "position": [
-            100,
-            -100,
-            50
+            -50,
+            150,
+            350
         ],
         "target": [
-            0,
-            0,
+            100,
+            100,
             0
         ]
+    },
+    "defaultTheme": "luxury",
+    "grid": {
+        "visible": false
     }
 }

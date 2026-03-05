@@ -13,5 +13,11 @@
             0,
             0
         ]
+    },
+    "grid": {
+        "visible": true,
+        "linesX": 100,
+        "linesY": 100,
+        "axisMarkers": true
     }
 }

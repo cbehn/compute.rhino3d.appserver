@@ -112,6 +112,9 @@ function scanDirectory(dir, category) {
           if (metadata.description) def.description = metadata.description
           if (metadata.date) def.date = metadata.date
           if (metadata.version) def.version = metadata.version
+          if (metadata.camera) def.camera = metadata.camera
+          if (metadata.defaultTheme) def.defaultTheme = metadata.defaultTheme
+          if (metadata.grid) def.grid = metadata.grid
 
         } catch (err) {
           console.error(`Error reading sidecar for ${fileName}:`, err)

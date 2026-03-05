@@ -220,7 +220,7 @@ export function renderViewControls(container, camera, controls, THREE) {
     wrapper.style.position = 'absolute';
     wrapper.style.top = '10px';
     wrapper.style.right = '10px';
-    wrapper.style.background = 'var(--panel-bg, rgba(255,255,255,0.8))';
+    wrapper.style.background = 'var(--base-100, #fff)';
     wrapper.style.padding = '5px';
     wrapper.style.borderRadius = '5px';
     wrapper.style.display = 'flex';
@@ -262,7 +262,7 @@ export function renderViewControls(container, camera, controls, THREE) {
 }
 
 // --- THEME SELECTOR ---
-export function renderThemeSelector(container, onThemeChange) {
+export function renderThemeSelector(container, onThemeChange, defaultTheme = 'light') {
     const select = document.createElement('select');
     select.className = 'select select-bordered select-xs w-full max-w-xs';
     select.style.marginBottom = '10px';
@@ -274,14 +274,14 @@ export function renderThemeSelector(container, onThemeChange) {
         select.appendChild(option);
     });
 
-    select.value = 'light';
+    select.value = defaultTheme;
     select.addEventListener('change', (e) => {
         applyThemeToPage(e.target.value);
         onThemeChange(e.target.value);
     });
 
     // Apply default theme initially
-    applyThemeToPage('light');
+    applyThemeToPage(defaultTheme);
 
     container.appendChild(select);
 }

@@ -99,6 +99,7 @@ router.get('/:name', async (req, res, next) => {
     }
   }
 
+  // Pre-load view with existing definition properties (like camera)
   let view = {
     name: definition.name,
     definitionJson: JSON.stringify(definition),
