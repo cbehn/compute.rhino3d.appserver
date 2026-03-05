@@ -1,0 +1,615 @@
+body {
+    margin: 0;
+    font-family: sans-serif;
+    overflow: hidden;
+    background-color: #f0f0f0;
+}
+
+/* 3D Canvas covers the whole screen */
+canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* Layout */
+#container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+}
+
+#canvas-container {
+    flex-grow: 1;
+    position: relative;
+    z-index: 0;
+    order: 2;
+}
+
+/* Left Panel */
+#left-panel {
+    width: 300px;
+    background: #ffffff;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+    overflow-y: auto;
+    padding: 20px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    order: 1;
+    flex-shrink: 0;
+}
+
+h2 {
+    margin-top: 0;
+    font-size: 1.2em;
+    color: #333;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+}
+
+#compute-container {
+    --primary: #2196F3;
+    --primary-focus: #1976D2;
+    --base-100: white;
+}
+
+/* Controls */
+.control-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    font-size: 0.85em;
+    color: #444;
+}
+
+input[type=range],
+input[type=number],
+input[type=text] {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Tooltip Icon Styles */
+.help-icon {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    background: #ccc;
+    color: white;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 14px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 6px;
+    cursor: help;
+    position: relative;
+    vertical-align: middle;
+}
+
+.help-icon:hover {
+    background: #2196F3;
+}
+
+/* Tooltip Popup */
+.help-icon:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 135%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 6px 10px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    width: 250px;
+    z-index: 1000;
+    font-weight: normal;
+    font-size: 1.25em;
+    pointer-events: none;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* Static Value Display (Clickable) */
+.val-display-static {
+    float: right;
+    font-weight: normal;
+    color: #2196F3;
+    font-size: 0.9em;
+    font-family: monospace;
+    cursor: pointer;
+    border-bottom: 1px dashed #ccc;
+    min-width: 40px;
+    text-align: right;
+    transition: color 0.2s;
+}
+
+.val-display-static:hover {
+    color: #1976D2;
+    border-bottom-color: #2196F3;
+}
+
+.toggle {
+    cursor: pointer;
+    display: block;
+    text-align: center;
+    padding: 8px;
+    background: #ddd;
+    border-radius: 4px;
+    user-select: none;
+    font-size: 0.85em;
+    font-weight: bold;
+}
+
+.toggle.active {
+    background: #4CAF50;
+    color: white;
+}
+
+.coming-soon {
+    padding: 10px;
+    background: #f9f9f9;
+    border: 1px dashed #ccc;
+    color: #888;
+    text-align: center;
+    font-size: 0.8em;
+    border-radius: 4px;
+}
+
+/* File Selector */
+#file-select-container {
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+select#definitionSelect {
+    width: 100%;
+    padding: 8px;
+    font-size: 1em;
+}
+
+#download-template-link {
+    color: #2196F3;
+    text-decoration: none;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+/* Compute Bar & Example Link */
+#compute-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f5f5f5;
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    border: 1px solid #e0e0e0;
+}
+
+#computeBtn {
+    background-color: #2196F3;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+#computeBtn:hover {
+    background-color: #1976D2;
+}
+
+#computeBtn:active {
+    transform: translateY(1px);
+}
+
+/* Toggle Switch for Live Compute */
+.live-toggle-label {
+    font-size: 0.8em;
+    font-weight: bold;
+    color: #555;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 20px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 34px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked+.slider {
+    background-color: #2196F3;
+}
+
+input:checked+.slider:before {
+    transform: translateX(14px);
+}
+
+/* Upload Button Special Styling */
+.upload-btn-wrapper {
+    position: relative;
+    overflow: hidden;
+    display: inline-block;
+    width: 100%;
+}
+
+.btn-upload {
+    border: 2px dashed #2196F3;
+    color: #2196F3;
+    background-color: white;
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 1em;
+    font-weight: bold;
+    width: 100%;
+    cursor: pointer;
+    text-align: center;
+    transition: 0.2s;
+    box-sizing: border-box;
+    white-space: nowrap;
+}
+
+.btn-upload:hover {
+    background-color: #e3f2fd;
+}
+
+.upload-btn-wrapper input[type=file] {
+    font-size: 100px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+/* RIGHT PANEL STACK 
+   Replaces "output-layer" with a consolidated stack
+*/
+#right-stack {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 20;
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+    /* Let clicks pass through gaps */
+}
+
+#right-stack>* {
+    pointer-events: auto;
+}
+
+button#downloadBtn {
+    width: 100%;
+    padding: 12px;
+    font-size: 1em;
+    background: #2196F3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+button#downloadBtn:disabled {
+    background: #999;
+    cursor: not-allowed;
+}
+
+/* Warnings */
+#warning-container {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.warning-msg {
+    background: rgba(255, 0, 0, 0.9);
+    color: white;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    text-align: center;
+}
+
+/* Log Container - Now inside Info Panel */
+#log-wrapper {
+    margin-top: auto;
+    /* Push to bottom */
+    background: #f9f9f9;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    overflow: hidden;
+}
+
+details#log-container {
+    padding: 10px;
+}
+
+summary {
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: bold;
+    color: #555;
+}
+
+#log-content {
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 0.75em;
+    margin-top: 10px;
+    white-space: pre-wrap;
+    background: #fff;
+    padding: 5px;
+    border: 1px solid #eee;
+}
+
+/* Gcode preview */
+#gcode-preview {
+    max-height: 150px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 0.7em;
+    background: #fff;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    color: #333;
+    display: none;
+    /* Hidden until generated */
+}
+
+/* View Controls - Now part of the stack */
+#view-controls {
+    background: white;
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+}
+
+.view-btn {
+    padding: 5px;
+    font-size: 0.7em;
+    cursor: pointer;
+    background: #eee;
+    border: none;
+    border-radius: 3px;
+}
+
+.view-btn:hover {
+    background: #ddd;
+}
+
+.view-btn.iso {
+    grid-column: span 3;
+    background: #ddd;
+    font-weight: bold;
+}
+
+#loader {
+    text-align: center;
+    margin-top: 20px;
+    font-style: italic;
+    color: #666;
+    display: none;
+}
+
+/* Info Toggle - Bottom Right */
+#info-toggle {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 100;
+    background: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    font-size: 1.5em;
+    text-align: center;
+    line-height: 40px;
+}
+
+/* INFO PANEL - RIGHT SIDE */
+#info-panel {
+    position: fixed;
+    top: 0;
+    right: -350px;
+    left: auto;
+    /* Change to Right */
+    width: 320px;
+    height: 100%;
+    background: white;
+    z-index: 200;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.2);
+    transition: right 0.3s;
+    padding: 25px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    color: #333;
+    display: flex;
+    flex-direction: column;
+}
+
+#info-panel h1 {
+    font-size: 1.5em;
+    margin-top: 0;
+    color: #2196F3;
+}
+
+.info-close {
+    float: right;
+    border: none;
+    background: none;
+    font-size: 1.5em;
+    cursor: pointer;
+    color: #666;
+}
+
+.info-close:hover {
+    color: #000;
+}
+
+.demo-gif-container {
+    margin: 20px 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.demo-gif-container img {
+    width: 100%;
+    display: block;
+}
+
+.info-btn {
+    display: block;
+    width: 100%;
+    text-decoration: none;
+    padding: 10px;
+    text-align: center;
+    border-radius: 4px;
+    margin-top: 10px;
+    font-weight: bold;
+}
+
+/* Color Key */
+.color-key-list {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0;
+    font-size: 0.9em;
+}
+
+.color-key-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.color-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    margin-right: 8px;
+    border: 1px solid #ccc;
+}
+
+/* VALUE EDITOR MODAL */
+#value-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.4);
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background-color: #fefefe;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    width: 250px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.modal-title {
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #333;
+}
+
+#modalInput {
+    padding: 8px;
+    font-size: 1em;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.btn-modal {
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.btn-cancel {
+    background: #eee;
+    color: #333;
+}
+
+.btn-save {
+    background: #2196F3;
+    color: white;
+}

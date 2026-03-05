@@ -10,12 +10,13 @@
 const express = require('express')
 const router = express.Router()
 const getParams = require('../definitions.js').getParams
+const azureService = require('../services/azure-service')
 
 /**
  * Show list of available definitions
  */
-router.get('/', async(req, res, next) => {
-  view = {
+router.get('/', async (req, res, next) => {
+  let view = {
     definitions: []
   }
   for (const definition of req.app.get('definitions')) {
@@ -31,9 +32,9 @@ router.get('/', async(req, res, next) => {
       console.log(err)
       next(err)
     }
-    if(data)
-      if(data.view) { view.definitions.push({ name: definition.name }) }
-    
+    if (data)
+      if (data.view) { view.definitions.push({ name: definition.name }) }
+
   }
   res.render('list', view)
 })
@@ -52,25 +53,56 @@ router.get('/:name', async (req, res, next) => {
   const fullUrl = req.protocol + '://' + req.get('host')
   let definitionPath = `${fullUrl}/definition/${definition.id}`
 
-  if(!Object.prototype.hasOwnProperty.call(definition, 'inputs')
-     && !Object.prototype.hasOwnProperty.call(definition, 'outputs')) {
+  // FAST FAIL & CACHE INVALIDATION: Check status before proceeding
+  try {
+    const status = await azureService.getWakeStatus();
+    if (status.status !== 'live') {
+      // Server is offline or starting. Ignore any cached parameters and serve the offline view immediately.
+      let view = {
+        name: definition.name,
+        definitionJson: JSON.stringify({ name: definition.name, status: status.status, error: status.message }),
+        inputs: []
+      };
+      return res.render('definition', view);
+    }
+  } catch (err) {
+    // Return offline view directly without mutating cache
+    let view = {
+      name: definition.name,
+      definitionJson: JSON.stringify({ name: definition.name, status: 'offline', error: err.message }),
+      inputs: []
+    };
+    return res.render('definition', view);
+  }
+
+  // Server is Live. If we don't have inputs cached, fetch them now.
+  if (!Object.prototype.hasOwnProperty.call(definition, 'inputs')
+    && !Object.prototype.hasOwnProperty.call(definition, 'outputs')) {
 
     let data
     try {
-      data = await getParams(definitionPath)
+      data = await getParams(definition.path)
+
+      // cache
+      definition.description = data.description
+      definition.inputs = data.inputs
+      definition.outputs = data.outputs
     } catch (err) {
-      next(err)
+      console.warn(`[Template Route] Could not get params for ${definition.name}, assuming offline. Error: ${err.message}`);
+      // Return offline view directly without mutating cache
+      let view = {
+        name: definition.name,
+        definitionJson: JSON.stringify({ name: definition.name, status: 'offline', error: err.message }),
+        inputs: []
+      };
+      return res.render('definition', view);
     }
-
-    // cache
-    definition.description = data.description
-    definition.inputs = data.inputs
-    definition.outputs = data.outputs
-
   }
 
-  view = {
+  // Pre-load view with existing definition properties (like camera)
+  let view = {
     name: definition.name,
+    definitionJson: JSON.stringify(definition),
     inputs: []
   }
 
@@ -89,11 +121,10 @@ router.get('/:name', async (req, res, next) => {
         break;
       case 'Number':
         if (input.minimum !== undefined && input.minimum !== null
-            && input.maximum !== undefined && input.maximum !== null)
-        {
+          && input.maximum !== undefined && input.maximum !== null) {
 
           let step = 1
-          if( ( input.maximum - input.minimum ) < 1 ) {
+          if ((input.maximum - input.minimum) < 1) {
             step = 0.1
           }
           // use range input if min and max set

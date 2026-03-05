@@ -1,0 +1,23 @@
+{
+    "description": "A simple test Grasshopper file.",
+    "date": "2026-01-06",
+    "version": "1.0.0",
+    "camera": {
+        "position": [
+            50,
+            50,
+            50
+        ],
+        "target": [
+            0,
+            0,
+            0
+        ]
+    },
+    "grid": {
+        "visible": true,
+        "linesX": 100,
+        "linesY": 100,
+        "axisMarkers": true
+    }
+}

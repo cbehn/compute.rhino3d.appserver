@@ -1,287 +1,12 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="utf-8">
     <title>CoLab CNC Setup Tool</title>
-    <style>
-        body { margin: 0; font-family: sans-serif; overflow: hidden; background-color: #f0f0f0; }
-        
-        /* 3D Canvas covers the whole screen */
-        canvas { width: 100%; height: 100%; display: block;}
-        
-        /* Layout */
-        #container { position: relative; width: 100vw; height: 100vh; display: flex; }
-        #canvas-container { flex-grow: 1; position: relative; z-index: 0; order: 2; }
-        
-        /* Left Panel */
-        #left-panel {
-            width: 300px;
-            background: #ffffff;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
-            z-index: 10;
-            overflow-y: auto;
-            padding: 20px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            order: 1;
-            flex-shrink: 0;
-        }
-
-        h2 { margin-top: 0; font-size: 1.2em; color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        
-        /* Controls */
-        .control-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.85em; color: #444;}
-        input[type=range], input[type=number], input[type=text] { width: 100%; box-sizing: border-box; }
-        
-        /* Tooltip Icon Styles */
-        .help-icon {
-            display: inline-block;
-            width: 14px; height: 14px;
-            background: #ccc; color: white;
-            border-radius: 50%;
-            text-align: center; line-height: 14px;
-            font-size: 10px; font-weight: bold;
-            margin-left: 6px; cursor: help;
-            position: relative;
-            vertical-align: middle;
-        }
-        .help-icon:hover { background: #2196F3; }
-        /* Tooltip Popup */
-        .help-icon:hover::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: 135%; left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.85);
-            color: white;
-            padding: 6px 10px;
-            border-radius: 4px;
-            white-space: pre-wrap;
-            width: 180px;
-            z-index: 1000;
-            font-weight: normal;
-            font-size: 0.9em;
-            pointer-events: none;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-
-        /* Static Value Display (Clickable) */
-        .val-display-static {
-            float: right; 
-            font-weight: normal; 
-            color: #2196F3; 
-            font-size: 0.9em; 
-            font-family: monospace;
-            cursor: pointer;
-            border-bottom: 1px dashed #ccc;
-            min-width: 40px;
-            text-align: right;
-            transition: color 0.2s;
-        }
-        .val-display-static:hover { color: #1976D2; border-bottom-color: #2196F3; }
-        
-        .toggle { 
-            cursor: pointer; display: block; text-align: center; 
-            padding: 8px; background: #ddd; border-radius: 4px; 
-            user-select: none; font-size: 0.85em; font-weight: bold;
-        }
-        .toggle.active { background: #4CAF50; color: white; }
-
-        .coming-soon {
-            padding: 10px; background: #f9f9f9; border: 1px dashed #ccc; 
-            color: #888; text-align: center; font-size: 0.8em; border-radius: 4px;
-        }
-
-        /* File Selector */
-        #file-select-container { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #eee;}
-        select#definitionSelect { width: 100%; padding: 8px; font-size: 1em; }
-
-        /* Compute Bar & Example Link */
-        #compute-bar {
-            display: flex; align-items: center; justify-content: space-between;
-            background: #f5f5f5; padding: 10px; border-radius: 6px; margin-bottom: 15px;
-            border: 1px solid #e0e0e0;
-        }
-        #computeBtn {
-            background-color: #2196F3; color: white; border: none; padding: 8px 12px;
-            border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.9em;
-        }
-        #computeBtn:hover { background-color: #1976D2; }
-        #computeBtn:active { transform: translateY(1px); }
-
-        /* Toggle Switch for Live Compute */
-        .live-toggle-label { font-size: 0.8em; font-weight: bold; color: #555; display: flex; align-items: center; gap: 5px; cursor: pointer; }
-        .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
-        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
-        input:checked + .slider { background-color: #2196F3; }
-        input:checked + .slider:before { transform: translateX(14px); }
-
-        /* Upload Button Special Styling */
-        .upload-btn-wrapper { position: relative; overflow: hidden; display: inline-block; width: 100%; }
-        .btn-upload {
-            border: 2px dashed #2196F3; color: #2196F3; background-color: white;
-            padding: 15px; border-radius: 8px; font-size: 1em; font-weight: bold;
-            width: 100%; cursor: pointer; text-align: center; transition: 0.2s;
-            box-sizing: border-box; 
-            white-space: nowrap;    
-        }
-        .btn-upload:hover { background-color: #e3f2fd; }
-        .upload-btn-wrapper input[type=file] {
-            font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer;
-        }
-
-        /* RIGHT PANEL STACK 
-           Replaces "output-layer" with a consolidated stack
-        */
-        #right-stack { 
-            position: absolute; top: 20px; right: 20px; 
-            z-index: 20; width: 280px; 
-            display: flex; flex-direction: column; gap: 10px; 
-            pointer-events: none; /* Let clicks pass through gaps */
-        }
-        #right-stack > * { pointer-events: auto; }
-
-        button#downloadBtn { 
-            width: 100%; padding: 12px; font-size: 1em; 
-            background: #2196F3; color: white; border: none; 
-            border-radius: 4px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-        button#downloadBtn:disabled { background: #999; cursor: not-allowed; }
-
-        /* Warnings */
-        #warning-container {
-            display: flex; flex-direction: column; gap: 5px;
-        }
-        .warning-msg {
-            background: rgba(255, 0, 0, 0.9);
-            color: white; padding: 10px; border-radius: 4px;
-            font-size: 0.85em; font-weight: bold;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            text-align: center;
-        }
-
-        /* Log Container - Now inside Info Panel */
-        #log-wrapper {
-            margin-top: auto; /* Push to bottom */
-            background: #f9f9f9;
-            border-radius: 4px;
-            border: 1px solid #ddd;
-            overflow: hidden;
-        }
-        details#log-container { padding: 10px; }
-        summary { cursor: pointer; font-size: 0.9em; font-weight: bold; color: #555; }
-        #log-content {
-            max-height: 200px; overflow-y: auto; font-family: monospace; 
-            font-size: 0.75em; margin-top: 10px; white-space: pre-wrap; 
-            background: #fff; padding: 5px; border: 1px solid #eee;
-        }
-
-        /* Gcode preview */
-        #gcode-preview {
-            max-height: 150px; overflow-y: auto; font-family: monospace;
-            font-size: 0.7em; background: #fff; padding: 10px; 
-            border: 1px solid #ccc; border-radius: 4px; color: #333;
-            display: none; /* Hidden until generated */
-        }
-
-        /* View Controls - Now part of the stack */
-        #view-controls {
-            background: white; padding: 10px; border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
-        }
-        .view-btn {
-            padding: 5px; font-size: 0.7em; cursor: pointer;
-            background: #eee; border: none; border-radius: 3px;
-        }
-        .view-btn:hover { background: #ddd; }
-        .view-btn.iso { grid-column: span 3; background: #ddd; font-weight: bold;}
-
-        #loader { text-align: center; margin-top: 20px; font-style: italic; color: #666; display: none; }
-        
-        /* Info Toggle - Bottom Right */
-        #info-toggle {
-            position: fixed; bottom: 20px; right: 20px; z-index: 100;
-            background: white; width: 40px; height: 40px;
-            border-radius: 50%; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            cursor: pointer; font-size: 1.5em; text-align: center; line-height: 40px;
-        }
-        /* INFO PANEL - RIGHT SIDE */
-        #info-panel {
-            position: fixed; top: 0; right: -350px; left: auto; /* Change to Right */
-            width: 320px; height: 100%;
-            background: white; z-index: 200; box-shadow: -2px 0 10px rgba(0,0,0,0.2);
-            transition: right 0.3s; padding: 25px; box-sizing: border-box;
-            overflow-y: auto; color: #333;
-            display: flex; flex-direction: column;
-        }
-        #info-panel h1 { font-size: 1.5em; margin-top: 0; color: #2196F3; }
-        .info-close { float: right; border: none; background: none; font-size: 1.5em; cursor: pointer; color: #666; }
-        .info-close:hover { color: #000; }
-        .demo-gif-container { margin: 20px 0; border: 1px solid #ddd; border-radius: 4px; overflow: hidden; }
-        .demo-gif-container img { width: 100%; display: block; }
-        .info-btn { display: block; width: 100%; text-decoration: none; padding: 10px; text-align: center; border-radius: 4px; margin-top: 10px; font-weight: bold; }
-
-        /* Color Key */
-        .color-key-list { list-style: none; padding: 0; margin: 10px 0; font-size: 0.9em; }
-        .color-key-item { display: flex; align-items: center; margin-bottom: 5px; }
-        .color-swatch { width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; border: 1px solid #ccc; }
-
-        /* STARTUP OVERLAY */
-        #startup-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 9999;
-            display: flex; flex-direction: column;
-            justify-content: center; align-items: center;
-            background-color: #111;
-            font-family: 'Courier New', Courier, monospace;
-            text-transform: uppercase;
-        }
-        .smpte-bars {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; z-index: -1;
-        }
-        .bar { height: 100%; flex: 1; }
-        .b-white { background: #c0c0c0; }
-        .b-yellow { background: #c0c000; }
-        .b-cyan { background: #00c0c0; }
-        .b-green { background: #00c000; }
-        .b-magenta { background: #c000c0; }
-        .b-red { background: #c00000; }
-        .b-blue { background: #0000c0; }
-        .tv-message-box {
-            background: rgba(0, 0, 0, 0.85); padding: 40px;
-            border: 2px solid white; text-align: center; color: white;
-            box-shadow: 10px 10px 0px rgba(0,0,0,0.5); max-width: 600px;
-        }
-        .tv-title { font-size: 2em; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px; color: #ffff00; text-shadow: 2px 2px #ff0000; }
-        .tv-subtitle { font-size: 1.2em; margin-bottom: 30px; color: #00ffff; }
-        .tv-blink { animation: blink 1.5s infinite; color: #ff00ff; font-weight: bold;}
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
-
-        /* VALUE EDITOR MODAL */
-        #value-modal {
-            display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%;
-            background-color: rgba(0,0,0,0.4); justify-content: center; align-items: center;
-        }
-        .modal-content {
-            background-color: #fefefe; padding: 20px; border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2); width: 250px;
-            display: flex; flex-direction: column; gap: 10px;
-        }
-        .modal-title { font-weight: bold; margin-bottom: 5px; color: #333; }
-        #modalInput { padding: 8px; font-size: 1em; border: 1px solid #ccc; border-radius: 4px; }
-        .modal-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
-        .btn-modal { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-cancel { background: #eee; color: #333; }
-        .btn-save { background: #2196F3; color: white; }
-
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
     <div id="info-toggle" title="Help & Logs">ℹ️</div>
@@ -289,13 +14,21 @@
     <div id="info-panel">
         <button class="info-close" id="close-info">&times;</button>
         <h1>CNC Tool Info</h1>
-        
+
         <p><strong>Color Key:</strong></p>
         <ul class="color-key-list">
-            <li class="color-key-item"><div class="color-swatch" style="background:black;"></div> <span>Imported DXF</span></li>
-            <li class="color-key-item"><div class="color-swatch" style="background:#00FFFF;"></div> <span>Cut Path</span></li>
-            <li class="color-key-item"><div class="color-swatch" style="background:#FF0000;"></div> <span>Bad Lines (Open)</span></li>
-            <li class="color-key-item"><div class="color-swatch" style="background:#FF00FF;"></div> <span>Unused Lines</span></li>
+            <li class="color-key-item">
+                <div class="color-swatch" style="background:black;"></div> <span>Imported DXF</span>
+            </li>
+            <li class="color-key-item">
+                <div class="color-swatch" style="background:#00FFFF;"></div> <span>Cut Path</span>
+            </li>
+            <li class="color-key-item">
+                <div class="color-swatch" style="background:#FF0000;"></div> <span>Bad Lines (Open)</span>
+            </li>
+            <li class="color-key-item">
+                <div class="color-swatch" style="background:#FF00FF;"></div> <span>Unused Lines</span>
+            </li>
         </ul>
 
         <div class="demo-gif-container">
@@ -310,28 +43,10 @@
                 <div id="log-content">Ready.</div>
             </details>
         </div>
-        
+
         <div style="margin-top: 20px;">
-             <a href="https://github.com/cbehn/compute.rhino3d.appserver/tree/prod" target="_blank" class="info-btn" style="background: #333; color: white;">GitHub Repo</a>
-        </div>
-    </div>
-
-    <div id="startup-overlay">
-        <div class="smpte-bars">
-            <div class="bar b-white"></div>
-            <div class="bar b-yellow"></div>
-            <div class="bar b-cyan"></div>
-            <div class="bar b-green"></div>
-            <div class="bar b-magenta"></div>
-            <div class="bar b-red"></div>
-            <div class="bar b-blue"></div>
-        </div>
-
-        <div class="tv-message-box">
-            <div class="tv-title">PLEASE STAND BY</div>
-            <div class="tv-subtitle">STARTING COMPUTE SERVER</div>
-            <div style="font-size: 0.9em; color: #ccc; margin-bottom: 20px;">ESTIMATED TIME: 1-2 MINUTES</div>
-            <div class="tv-blink" id="startup-status">INITIALIZING...</div>
+            <a href="https://github.com/cbehn/compute.rhino3d.appserver/tree/prod" target="_blank" class="info-btn"
+                style="background: #333; color: white;">GitHub Repo</a>
         </div>
     </div>
 
@@ -349,54 +64,37 @@
     <div id="container">
         <div id="left-panel">
             <h2>CoLab CNC Setup Tool</h2>
-            
+
             <div id="file-select-container">
                 <label for="definitionSelect">Select Definition:</label>
                 <select id="definitionSelect">
                     <option value="" disabled selected>Choose a file...</option>
                 </select>
                 <div style="text-align: right; margin-top: 5px;">
-                    <a href="files/Template.dxf" download style="color: #2196F3; text-decoration: none; font-size: 0.8em; font-weight: bold;">
+                    <a href="files/Template.dxf" download id="download-template-link">
                         ⬇ Download Template.dxf
                     </a>
                 </div>
             </div>
 
-            <div id="compute-bar">
-                <label class="live-toggle-label">
-                    <div class="switch">
-                        <input type="checkbox" id="liveComputeToggle">
-                        <span class="slider"></span>
-                    </div>
-                    Live
-                </label>
-                <button id="computeBtn">Compute</button>
-            </div>
+            <div id="compute-container"></div>
 
             <div id="controls-container">
                 <p style="color:#888; text-align: center;">Select a definition to begin.</p>
             </div>
-            
+
             <div id="loader">Processing... ⚙️</div>
         </div>
 
         <div id="canvas-container"></div>
-        
+
         <div id="right-stack">
-            
-            <div id="view-controls">
-                <button class="view-btn iso" onclick="snapView('iso')">ISO</button>
-                <button class="view-btn" onclick="snapView('top')">Top</button>
-                <button class="view-btn" onclick="snapView('front')">Frt</button>
-                <button class="view-btn" onclick="snapView('right')">Rgt</button>
-                <button class="view-btn" onclick="snapView('left')">Lft</button>
-                <button class="view-btn" onclick="snapView('back')">Bck</button>
-                <button class="view-btn" onclick="snapView('bottom')">Btm</button>
-            </div>
+
+            <div id="view-controls-container" style="position: relative; height: 50px;"></div>
 
             <pre id="gcode-preview"></pre>
             <button id="downloadBtn" disabled>Download GCode</button>
-            
+
             <div id="warning-container"></div>
         </div>
 
@@ -409,15 +107,18 @@
                 "three": "https://unpkg.com/three@0.156.1/build/three.module.js",
                 "three/examples/jsm/controls/OrbitControls": "https://unpkg.com/three@0.156.1/examples/jsm/controls/OrbitControls.js",
                 "three/examples/jsm/loaders/3DMLoader": "https://unpkg.com/three@0.156.1/examples/jsm/loaders/3DMLoader.js",
-                "rhino3dm":"https://unpkg.com/rhino3dm@8.4.0/rhino3dm.module.js"            }
+                "rhino3dm":"https://unpkg.com/rhino3dm@8.4.0/rhino3dm.module.js",
+                "ui_components": "/public/js/ui-components.js"
+            }
         }
     </script>
     <script type="module" src="script.js"></script>
-    
+
     <script>
         window.snapView = (view) => {
             window.dispatchEvent(new CustomEvent('snap-view', { detail: view }));
         };
     </script>
 </body>
+
 </html>

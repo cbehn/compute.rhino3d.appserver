@@ -1,446 +1,1197 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <meta charset="utf-8">
-        <link rel="icon" href="data:,">
-        <title>{{name}}</title>
-        <style>
-            body {
-                margin: 0;
-                font-family: Arial, Helvetica, sans-serif;
-            }
-            canvas { width: 100%; height: 100%; }
-            input[type=range] { width: 100%; }
-            #container { position: relative; }
-            #container canvas, #overlay { position: absolute; }
-            #overlay { z-index: 1; width: 100%; }
-            #overlay div { padding: 5px; }
-            #loader {
-                border: 5px solid #f3f3f3; /* Light grey */
-                border-top: 5px solid #3d3d3d; /* Grey */
-                border-radius: 50%;
-                width: 40px;
-                height: 40px;
-                animation: spin 1s linear infinite;
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                z-index: 2;
-            }
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-        </style>
-    </head>
-    <body>
-        <div id="loader"></div> 
-        <div id="container">
-            <div id="overlay">
-                {{#each inputs}}
-                <div>
-                  <label for="{{id}}">{{name}}</label>
-                  {{#number}}
-                  <input type="number" id="{{../id}}" value="{{value}}">
-                  {{/number}}
-                  {{#range}}
-                  <input type="range" id="{{../id}}" min="{{min}}" max="{{max}}" value="{{value}}" step="{{step}}">
-                  {{/range}}
-                  {{#bool}}
-                  <input type="checkbox" id="{{../id}}" {{#value}}checked{{/value}}>
-                  {{/bool}}
-                </div>
-                {{/each}}
-                <div><button id="downloadButton" disabled>Download</button></div>
-                <div><a href="{{name}}" download="{{name}}.html">Save source code</a></div>
-            </div>
-        </div>
-        <!-- Import maps polyfill -->
-        <!-- Remove this when import maps will be widely supported -->
-        <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
 
-        <script type="importmap">
+<head>
+  <meta charset="utf-8">
+  <link rel="icon" href="data:,">
+  <title>{{name}}</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      background-color: var(--base-100, #f5f5f5);
+      color: var(--base-content, #333);
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    #container {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    #controls {
+      width: 350px;
+      background-color: var(--base-100, #f5f5f5);
+      border-right: 1px solid var(--border-color, #ddd);
+      padding: 20px;
+      overflow-y: auto;
+      box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.3s, border-color 0.3s;
+    }
+
+    #canvas-container {
+      flex-grow: 1;
+      position: relative;
+      background-color: var(--base-100, #e0e0e0);
+      background-image: linear-gradient(to bottom, transparent, var(--panel-bg, rgba(0, 0, 0, 0.05)));
+      transition: background-color 0.3s;
+    }
+
+    /* Shared Styles Ported from CNC */
+    .control-group {
+      margin-bottom: 20px;
+      background: var(--base-100, white);
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px var(--border-color, rgba(0, 0, 0, 0.1));
+      border: 1px solid var(--border-color, transparent);
+      transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--base-content, #333);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: color 0.3s;
+    }
+
+    input[type=range] {
+      width: 100%;
+      margin: 10px 0;
+      cursor: pointer;
+    }
+
+    .val-display-static {
+      background: var(--panel-bg, #eee);
+      border: 1px solid var(--border-color, transparent);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.9em;
+      cursor: pointer;
+      color: var(--primary, #007aff);
+      transition: background-color 0.3s, border-color 0.3s;
+    }
+
+    .val-display-static:hover {
+      background: var(--border-color, #e0e0e0);
+      text-decoration: underline;
+    }
+
+    .toggle {
+      background: var(--panel-bg, #e0e0e0);
+      border-radius: 20px;
+      padding: 5px 15px;
+      cursor: pointer;
+      text-align: center;
+      font-weight: bold;
+      color: var(--base-content, #666);
+      transition: all 0.3s;
+      user-select: none;
+    }
+
+    .toggle.active {
+      background: var(--primary, #4CAF50);
+      color: var(--base-100, white);
+      box-shadow: 0 2px 5px var(--primary, rgba(76, 175, 80, 0.4));
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-box {
+      background: var(--base-100, white);
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px var(--border-color, rgba(0, 0, 0, 0.2));
+      width: 300px;
+      color: var(--base-content, #333);
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    .modal-title {
+      font-size: 1.2em;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .btn {
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .btn-primary {
+      background: var(--primary, #007aff);
+      color: var(--base-100, white);
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    .btn-secondary {
+      background: var(--panel-bg, #ddd);
+      color: var(--base-content, #333);
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    /* Layer Key Styles */
+    .layer-key-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px;
+      margin-bottom: 5px;
+      background: var(--base-100, white);
+      border: 1px solid var(--border-color, #ddd);
+      border-radius: 6px;
+      transition: background-color 0.3s, border-color 0.3s;
+    }
+
+    .layer-color-swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      margin-right: 10px;
+      display: inline-block;
+    }
+
+    .layer-name {
+      flex-grow: 1;
+      font-weight: 500;
+      color: var(--base-content, #333);
+      font-size: 0.9em;
+    }
+
+    .layer-toggle {
+      width: 30px;
+      height: 16px;
+      background: var(--border-color, #ccc);
+      /* Needs to be visibly grey/distinct when off */
+      border-radius: 10px;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .layer-toggle.active {
+      /* Dynamic inline background will override this */
+      background: var(--primary, #4CAF50);
+    }
+
+    .layer-toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 12px;
+      height: 12px;
+      background: var(--base-100, white);
+      border-radius: 50%;
+      transition: transform 0.3s;
+    }
+
+    .layer-toggle.active::after {
+      transform: translateX(14px);
+    }
+
+    #view-controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 100;
+      background: var(--base-100, #f5f5f5);
+      color: var(--base-content, #333);
+      /* Added color */
+      border-radius: 8px;
+      /* Added border-radius for consistency */
+      padding: 10px;
+      /* Added padding for better appearance */
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      /* Added subtle shadow */
+      transition: background-color 0.3s, color 0.3s, box-shadow 0.3s;
+      /* Added transition */
+    }
+
+    #layer-key-container {
+      position: absolute;
+      top: 60px;
+      /* Position below view-controls */
+      right: 10px;
+      z-index: 100;
+      width: 200px;
+      /* Reduced width for overlay */
+      max-height: calc(100vh - 80px);
+      /* Fill remaining height */
+      overflow-y: auto;
+    }
+
+    /* Small adjustment to overlay items */
+    .layer-key-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      /* Slightly tighter padding */
+      margin-bottom: 5px;
+      background: var(--base-100, white);
+      /* Opaque background for legibility */
+      border: 1px solid var(--border-color, #ddd);
+      border-radius: 6px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      transition: background-color 0.3s, border-color 0.3s;
+    }
+
+    #loader {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border: 5px solid var(--panel-bg, #f3f3f3);
+      border-top: 5px solid var(--primary, #3498db);
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      display: none;
+      z-index: 2000;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* DaisyUI Helper Classes (Simplified) */
+    .btn-sm {
+      font-size: 0.875rem;
+      height: 2rem;
+      min-height: 2rem;
+      padding-left: 0.75rem;
+      padding-right: 0.75rem;
+    }
+
+    .select {
+      display: inline-flex;
+      cursor: pointer;
+      user-select: none;
+      appearance: none;
+      height: 3rem;
+      padding-left: 1rem;
+      padding-right: 2.5rem;
+      font-size: 0.875rem;
+      line-height: 1.25rem;
+      border-radius: 0.5rem;
+      border-width: 1px;
+      border-color: var(--border-color, #d2d4d7);
+      background-color: var(--base-100, #fff);
+      color: var(--base-content, #333);
+    }
+
+    .select-xs {
+      height: 1.5rem;
+      padding-left: 0.5rem;
+      padding-right: 2rem;
+      font-size: 0.75rem;
+      line-height: 1rem;
+      min-height: 1.5rem;
+    }
+
+    .w-full {
+      width: 100%;
+    }
+
+    .max-w-xs {
+      max-width: 20rem;
+    }
+  </style>
+
+  <!-- Import maps polyfill -->
+  <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+
+  <script type="importmap">
             {
                 "imports": {
                     "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
                     "three/examples/jsm/controls/OrbitControls": "https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js",
                     "three/examples/jsm/loaders/3DMLoader": "https://unpkg.com/three@0.158.0/examples/jsm/loaders/3DMLoader.js",
-                    "rhino3dm":"https://unpkg.com/rhino3dm@8.0.0-beta3/rhino3dm.module.js",
-                    "rhino_compute": "https://unpkg.com/compute-rhino3d@0.13.0-beta/compute.rhino3d.module.js"
+                    "three/examples/jsm/lines/LineMaterial": "https://unpkg.com/three@0.158.0/examples/jsm/lines/LineMaterial.js",
+                    "three/examples/jsm/lines/LineGeometry": "https://unpkg.com/three@0.158.0/examples/jsm/lines/LineGeometry.js",
+                    "three/examples/jsm/lines/Line2": "https://unpkg.com/three@0.158.0/examples/jsm/lines/Line2.js",
+                    "rhino3dm":"https://unpkg.com/rhino3dm@8.4.0/rhino3dm.module.js",
+                    "ui_components": "/public/js/ui-components.js"
                 }
             }
         </script>
+</head>
 
-        <script type="module">
-import * as THREE from 'three'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
-import { Rhino3dmLoader } from 'three/examples/jsm/loaders/3DMLoader'
-import rhino3dm from 'rhino3dm'
-import { RhinoCompute } from 'rhino_compute'
+<body>
+  <div id="loader"></div>
 
-// set up loader for converting the results to threejs
-const loader = new Rhino3dmLoader()
-loader.setLibraryPath( 'https://unpkg.com/rhino3dm@8.0.0-beta3/' )
+  <!-- Value Entry Modal -->
+  <div id="value-modal" class="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-title" id="modalTitle">Set Value</div>
+      <input type="number" id="modalInput" class="select w-full"
+        style="height: 40px; border: 1px solid var(--border-color, #ccc); background-color: var(--base-100, #fff); color: var(--base-content, #333);">
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
+        <button class="btn btn-primary" id="modalSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
 
-// initialise 'data' object that will be used by compute()
-const data = {
-  definition: '{{name}}',
-  inputs: getInputs()
-}
+  <div id="container">
+    <!-- Sidebar -->
+    <div id="controls">
+      <h2 style="margin-top:0; margin-bottom: 20px; font-size: 1.2em;">{{name}}</h2>
 
-// globals
-let doc, scene, camera, renderer, controls
+      <!-- Theme Selector -->
+      <div id="theme-container"></div>
 
-const rhino = await rhino3dm()
-console.log('Loaded rhino3dm.')
+      <!-- Compute Controls -->
+      <div id="compute-container"></div>
 
-init()
-compute()
+      <hr style="border: 0; border-top: 1px solid var(--border-color, #ddd); margin: 10px 0 20px 0;">
 
-const downloadButton = document.getElementById("downloadButton")
-downloadButton.onclick = download
+      <!-- Dynamic Inputs -->
+      <div id="inputs-container"></div>
 
-  /////////////////////////////////////////////////////////////////////////////
- //                            HELPER  FUNCTIONS                            //
-/////////////////////////////////////////////////////////////////////////////
+      <!-- Output Log -->
+      <hr style="border: 0; border-top: 1px solid var(--border-color, #ddd); margin: 20px 0 10px 0;">
+      <h3 style="font-size: 1em; color: var(--base-content, #555); margin-bottom: 10px; transition: color 0.3s;">Output
+        Log</h3>
+      <div id="output-log"
+        style="flex-grow: 1; min-height: 100px; max-height: 250px; overflow-y: auto; background: var(--base-100, white); border: 1px solid var(--border-color, #ccc); border-radius: 6px; padding: 10px; font-family: monospace; font-size: 0.8em; margin-bottom: 20px; transition: background-color 0.3s, border-color 0.3s; color: var(--base-content, inherit);">
+        <div style="color: var(--base-content, #aaa); opacity: 0.6; font-style: italic;">Awaiting compute...</div>
+      </div>
 
-/**
- * Gets <input> elements from html and sets handlers
- * (html is generated from the grasshopper definition)
- */
-function getInputs() {
-  const inputs = {}
-  for (const input of document.getElementsByTagName('input')) {
-    switch (input.type) {
-      case 'number':
-        inputs[input.id] = input.valueAsNumber
-        input.onchange = onSliderChange
-        break
-      case 'range':
-        inputs[input.id] = input.valueAsNumber
-        input.onmouseup = onSliderChange
-        input.ontouchend = onSliderChange
-        break
-      case 'checkbox':
-        inputs[input.id] = input.checked
-        input.onclick = onSliderChange
-        break
-      default:
-        break
-    }
-  }
-  return inputs
-}
+      <div style="margin-top: auto; padding-top: 5px; font-size: 0.8em; text-align: center;">
+        <a href="{{name}}" download="{{name}}.html"
+          style="color: var(--primary, #007aff); text-decoration:none;">Download Logic
+          (HTML)</a>
+      </div>
+    </div>
 
-/**
- * Sets up the scene, camera, renderer, lights and controls and starts the animation
- */
-function init() {
+    <!-- 3D Canvas -->
+    <div id="canvas-container">
+      <div id="view-controls"></div>
+      <div id="layer-key-container"></div>
+    </div>
+  </div>
 
-    // Rhino models are z-up, so set this as the default
-    THREE.Object3D.DefaultUp = new THREE.Vector3( 0, 0, 1 );
+  <script type="module">
+    import * as THREE from 'three'
+    import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
+    import { Rhino3dmLoader } from 'three/examples/jsm/loaders/3DMLoader'
+    import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial'
+    import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry'
+    import { Line2 } from 'three/examples/jsm/lines/Line2'
+    import rhino3dm from 'rhino3dm'
+    import { renderComputeControls, renderViewControls, renderThemeSelector, getThemePalette, showStartupOverlayAndWait, initThemes } from 'ui_components'
 
-    // create a scene and a camera
-    scene = new THREE.Scene()
-    scene.background = new THREE.Color(1, 1, 1)
-    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000)
-    camera.position.set(1, -1, 1) // like perspective view
+    // --- DATA INJECTION ---
+    const rawDefinition = {{{ definitionJson }}}; // Inject JSON from server
+    const definitionName = rawDefinition.name;
+    let paramDefs = rawDefinition.inputs || [];
 
-    // very light grey for background, like rhino
-    scene.background = new THREE.Color('whitesmoke')
+    // --- GLOBALS ---
+    let inputs = {};
+    let scene, camera, renderer, controls;
+    let activeParamName = null;
+    let activeDisplayEl = null;
+    let activeSliderEl = null;
+    let liveCompute = false;
+    let currentPalette = [];
+    let outputLayers = {}; // Store { colorIdx, threeObjects: [], colorSwatches: [] }
 
-    // create the renderer and add it to the html
-    renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setPixelRatio( window.devicePixelRatio )
-    renderer.setSize(window.innerWidth, window.innerHeight)
-    document.body.appendChild(renderer.domElement)
+    // --- Color Extraction Helper ---
+    function getCssVarColor(varName, fallbackHex) {
+      const val = getComputedStyle(document.body).getPropertyValue(varName).trim();
+      // If no CSS var found (e.g. before theme is applied), use fallback
+      if (!val) return fallbackHex;
 
-    // add some controls to orbit the camera
-    controls = new OrbitControls(camera, renderer.domElement)
+      // If the value is a hex code
+      if (val.startsWith('#')) return parseInt(val.replace('#', '0x'), 16);
 
-    // add a directional light
-    const directionalLight = new THREE.DirectionalLight( 0xffffff )
-    directionalLight.intensity = 2
-    scene.add( directionalLight )
-
-    const ambientLight = new THREE.AmbientLight()
-    scene.add( ambientLight )
-
-    // handle changes in the window size
-    window.addEventListener( 'resize', onWindowResize, false )
-
-    animate()
-}
-
-/**
- * Call appserver
- */
-async function compute() {
-  // construct url for GET /solve/definition.gh?name=value(&...)
-  const url = new URL('/solve/' + data.definition, window.location.origin)
-  Object.keys(data.inputs).forEach(key => url.searchParams.append(key, data.inputs[key]))
-  console.log(url.toString())
-  
-  try {
-    const response = await fetch(url)
-  
-    if(!response.ok) {
-      // TODO: check for errors in response json
-      throw new Error(response.statusText)
+      // If it's a known named color or rgb/rgba string, Three.js Color can parse it
+      return val;
     }
 
-    const responseJson = await response.json()
-    console.log(responseJson)
+    function updateThemeColors() {
+      if (!scene) return;
+      for (const [paramName, layerData] of Object.entries(outputLayers)) {
+        const color = currentPalette[layerData.colorIdx % currentPalette.length];
 
-    collectResults(responseJson)
+        // Update UI Swatches
+        layerData.colorSwatches.forEach(swatch => swatch.style.backgroundColor = color);
 
-  } catch(error) {
-    console.error(error)
-  }
-}
-
-/**
- * Parse response
- */
-function collectResults(responseJson) {
-
-    const values = responseJson.values
-
-    // clear doc
-    if( doc !== undefined)
-        doc.delete()
-
-    //console.log(values)
-    doc = new rhino.File3dm()
-
-    // for each output (RH_OUT:*)...
-    for ( let i = 0; i < values.length; i ++ ) {
-      // ...iterate through data tree structure...
-      for (const path in values[i].InnerTree) {
-        const branch = values[i].InnerTree[path]
-        // ...and for each branch...
-        for( let j = 0; j < branch.length; j ++) {
-          // ...load rhino geometry into doc
-          const rhinoObject = decodeItem(branch[j])
-          //console.log(rhinoObject.vertexColors().count)
-          if (rhinoObject !== null) {
-
-            if( rhinoObject.constructor.name === 'File3dm' ) {
-              
-              const _doc = rhinoObject
-
-              //add objects into the main doc
-              for( let p = 0; p < _doc.objects().count; p ++ ) {
-
-                const ro = _doc.objects().get(p)
-                const geo = ro.geometry()
-                const attr = ro.attributes()
-                const matIndex = attr.materialIndex
-                const mat = _doc.materials().get(matIndex)
-                attr.materialIndex = doc.materials().count - 1 
-                doc.materials().add(mat)
-                doc.objects().add(geo, attr)
-
-              }
-              
-            } else {
-              doc.objects().add(rhinoObject, null)
+        // Update Theme for UI Toggles (Match output branch color if active)
+        if (layerData.layerToggles) {
+          const cssColor = '#' + color.toString(16).padStart(6, '0');
+          layerData.layerToggles.forEach(toggle => {
+            if (toggle.classList.contains('active')) {
+              toggle.style.background = cssColor;
             }
-            
-          }
+          });
         }
+
+        // Update Three.js Materials
+        layerData.threeObjects.forEach(obj => {
+          obj.traverse((child) => {
+            if (child.isMesh || child.isLine || child.isLine2 || child.isPoints) {
+              if (child.material) {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(m => {
+                    m.color.set(color);
+                    m.needsUpdate = true;
+                  });
+                } else {
+                  child.material.color.set(color);
+                  child.material.needsUpdate = true;
+                }
+              }
+            }
+          });
+        });
       }
     }
 
-    if (doc.objects().count < 1) {
-      console.error('No rhino objects to load!')
-      showSpinner(false)
-      return
-    }
+    // --- INIT ---
+    init();
 
-    // load rhino doc into three.js scene
-    const buffer = new Uint8Array(doc.toByteArray()).buffer
-    loader.parse( buffer, function ( object ) 
-    {
-        // debug 
-        /*
-        object.traverse(child => {
-          if (child.material !== undefined)
-            child.material = new THREE.MeshNormalMaterial()
-        }, false)
-        */
+    async function init() {
 
-        // clear objects from scene. do this here to avoid blink
-        scene.traverse(child => {
-            if (!child.isLight) {
-                scene.remove(child)
-            }
-        })
+      await initThemes();
 
-        //console.log(object)
+      // 0. Check Status
+      if (rawDefinition.status && rawDefinition.status !== 'live') {
+        console.warn("Compute Server not ready. Initiating Wakeup...");
 
-        // add object graph from rhino model to three.js scene
-        scene.add( object )
-
-        // hide spinner and enable download button
-        showSpinner(false)
-        downloadButton.disabled = false
-
-        // zoom to extents
-        zoomCameraToSelection(camera, controls, scene.children)
-    })
-}
-
-/**
- * Attempt to decode data tree item to rhino geometry
- */
-function decodeItem(item) {
-  const data = JSON.parse(item.data)
-  if (item.type === 'System.String') {
-    // hack for draco meshes
-    try {
-
-        const obj = rhino.DracoCompression.decompressBase64String(data)
-
-        if( obj === null ) {
-
-          //might be a whole doc
-
-          const arr = _base64ToArrayBuffer(data)
-          return rhino.File3dm.fromByteArray(arr)
-
-        } else {
-
-          return obj
-
+        try {
+          await showStartupOverlayAndWait();
+        } catch (e) {
+          console.error("Wakeup failed:", e);
+          return;
         }
-        
-    } catch {} // ignore errors (maybe the string was just a string...)
-  } else if (typeof data === 'object') {
-    //console.log(data)
-    return rhino.CommonObject.decode(data)
-  }
-  return null
-}
 
-/**
- * Called when a slider value changes in the UI. Collect all of the
- * slider values and call compute to solve for a new scene
- */
-function onSliderChange () {
-  showSpinner(true)
-  // get slider values
-  let inputs = {}
-  for (const input of document.getElementsByTagName('input')) {
-    switch (input.type) {
-    case 'number':
-      inputs[input.id] = input.valueAsNumber
-      break
-    case 'range':
-      inputs[input.id] = input.valueAsNumber
-      break
-    case 'checkbox':
-      inputs[input.id] = input.checked
-      break
+        // Once awake, fetch the REAL definition data
+        try {
+          const res = await fetch(`/definition/${rawDefinition.name}/info`);
+          if (res.ok) {
+            const data = await res.json();
+            // Update parameter definitions dynamically instead of reloading the page
+            paramDefs = data.inputs || [];
+            rawDefinition.status = 'live';
+          }
+        } catch (e) {
+          console.error("Failed to fetch fresh definition", e);
+        }
+      }
+
+      // 1. Setup UI
+      const initTheme = rawDefinition.defaultTheme || 'light';
+      currentPalette = getThemePalette(initTheme);
+
+      renderThemeSelector(document.getElementById('theme-container'), (theme) => {
+        currentPalette = getThemePalette(theme);
+        updateThemeColors();
+
+        // Also update standard scene elements if scene exists
+        if (scene) {
+          const contentColor = getCssVarColor('--base-content', 0x333333);
+          const panelBgColor = getCssVarColor('--panel-bg', 0xe0e0e0);
+
+          scene.traverse((child) => {
+            if (child.isHemisphereLight) {
+              child.color.set(0xffffff); // Keep sky white
+              child.groundColor.set(panelBgColor); // Ground tint
+            }
+            if (child.isDirectionalLight) {
+              child.color.set(0xffffff);
+            }
+            if (child.isGridHelper) {
+              // Update grid helper colors
+              child.material.color.set(contentColor);
+              child.material.opacity = 0.5; // High contrast
+              child.material.transparent = true;
+            }
+            if (child.name === 'AxisMarkerX') {
+              child.material.color.set(getCssVarColor('--error', 0xff0000));
+            }
+            if (child.name === 'AxisMarkerY') {
+              child.material.color.set(getCssVarColor('--success', 0x00ff00));
+            }
+          });
+        }
+      }, initTheme);
+
+      renderComputeControls(document.getElementById('compute-container'), triggerSolve, (isLive) => {
+        liveCompute = isLive;
+        if (liveCompute) triggerSolve();
+      });
+
+      // 2. Setup 3D
+      init3D();
+
+      // 3. Generate Inputs
+      const inputsContainer = document.getElementById('inputs-container');
+      paramDefs.forEach(param => createControl(param, inputsContainer));
+
+      // 4. Modal Events
+      setupModal();
+
+      // 5. Initial Solve (only if we have inputs)
+      if (paramDefs.length > 0) {
+        setTimeout(triggerSolve, 500);
+      }
     }
-  }
-  
-  data.inputs = inputs
 
-  compute()
-}
+    function init3D() {
+      const container = document.getElementById('canvas-container');
 
-/**
- * The animation loop!
- */
-function animate() {
-  requestAnimationFrame( animate )
-  controls.update()
-  renderer.render(scene, camera)
-}
+      scene = new THREE.Scene();
+      // Transparent background so we can see CSS gradient behind canvas
+      scene.background = null;
 
-/**
- * Helper function for window resizes (resets the camera pov and renderer size)
-  */
-function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight
-  camera.updateProjectionMatrix()
-  renderer.setSize( window.innerWidth, window.innerHeight )
-  animate()
-}
+      // Lighting
+      const panelBgColor = getCssVarColor('--panel-bg', 0xe0e0e0);
+      const hemiLight = new THREE.HemisphereLight(0xffffff, panelBgColor, 1.5);
+      hemiLight.position.set(0, 200, 0);
+      scene.add(hemiLight);
 
-/**
- * Helper function that behaves like rhino's "zoom to selection", but for three.js!
- */
-function zoomCameraToSelection( camera, controls, selection, fitOffset = 1.2 ) {
-  
-  const box = new THREE.Box3();
-  
-  for( const object of selection ) {
-    if (object.isLight) continue
-    box.expandByObject( object );
-  }
-  
-  const size = box.getSize( new THREE.Vector3() );
-  const center = box.getCenter( new THREE.Vector3() );
-  
-  const maxSize = Math.max( size.x, size.y, size.z );
-  const fitHeightDistance = maxSize / ( 2 * Math.atan( Math.PI * camera.fov / 360 ) );
-  const fitWidthDistance = fitHeightDistance / camera.aspect;
-  const distance = fitOffset * Math.max( fitHeightDistance, fitWidthDistance );
-  
-  const direction = controls.target.clone()
-    .sub( camera.position )
-    .normalize()
-    .multiplyScalar( distance );
-  controls.maxDistance = distance * 10;
-  controls.target.copy( center );
-  
-  camera.near = distance / 100;
-  camera.far = distance * 100;
-  camera.updateProjectionMatrix();
-  camera.position.copy( controls.target ).sub(direction);
-  
-  controls.update();
-  
-}
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+      dirLight.position.set(100, 100, 100);
+      dirLight.castShadow = true;
+      scene.add(dirLight);
 
-/**
- * This function is called when the download button is clicked
- */
-function download () {
-    // write rhino doc to "blob"
-    const bytes = doc.toByteArray()
-    const blob = new Blob([bytes], {type: "application/octect-stream"})
+      // Add a Grid dynamically based on sidecar config
+      const contentColor = getCssVarColor('--base-content', 0x333333);
+      const gridConfig = rawDefinition.grid || {};
 
-    // use "hidden link" trick to get the browser to download the blob
-    const filename = data.definition.replace(/\.gh$/, '') + '.3dm'
-    const link = document.createElement('a')
-    link.href = window.URL.createObjectURL(blob)
-    link.download = filename
-    link.click()
-}
+      if (gridConfig.visible !== false) {
+        // Defaults if not provided
+        const gridLinesX = gridConfig.linesX || 100;
+        const gridLinesY = gridConfig.linesY || 100;
 
-/**
- * Shows or hides the loading spinner
- */
-function showSpinner(enable) {
-  if (enable)
-    document.getElementById('loader').style.display = 'block'
-  else
-    document.getElementById('loader').style.display = 'none'
-}
+        const gridHelper = new THREE.GridHelper(gridLinesX, gridLinesY, contentColor, contentColor);
+        gridHelper.material.opacity = 0.5; // High contrast
+        gridHelper.material.transparent = true;
+        scene.add(gridHelper);
+      }
 
-// from https://stackoverflow.com/a/21797381
-function _base64ToArrayBuffer(base64) {
-  var binary_string = window.atob(base64);
-  var len = binary_string.length;
-  var bytes = new Uint8Array(len);
-  for (var i = 0; i < len; i++) {
-    bytes[i] = binary_string.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
-        </script>
-    </body>
+      // Add Axis Markers if requested (default to true per user request)
+      if (gridConfig.visible !== false && gridConfig.axisMarkers !== false) {
+        const xColor = getCssVarColor('--error', 0xff0000);   // Red for X
+        const yColor = getCssVarColor('--success', 0x00ff00); // Green for Y
+
+        const linesX = gridConfig.linesX || 100;
+        const linesY = gridConfig.linesY || 100;
+
+        const xMat = new THREE.LineBasicMaterial({ color: xColor, linewidth: 2 });
+        const yMat = new THREE.LineBasicMaterial({ color: yColor, linewidth: 2 });
+
+        // Setup X Axis Points (Rotated plane)
+        const xPoints = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(linesX / 2, 0, 0)];
+        const xGeo = new THREE.BufferGeometry().setFromPoints(xPoints);
+        const xAxisLine = new THREE.Line(xGeo, xMat);
+        xAxisLine.name = 'AxisMarkerX';
+        scene.add(xAxisLine);
+
+        // Setup Y Axis Points (Note: Three.js Y is UP, but in Rhino Z is UP and Y is back. 
+        // Previously we drew the Y line along Z. The user asked to correct this to be the actual Rhino Y.
+        // We do a Math.PI/2 rotation on Rhino objects so the Rhino Y-axis points out along negative Z in Three.js space)
+        const yPoints = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -linesY / 2)];
+        const yGeo = new THREE.BufferGeometry().setFromPoints(yPoints);
+        const yAxisLine = new THREE.Line(yGeo, yMat);
+        yAxisLine.name = 'AxisMarkerY';
+        scene.add(yAxisLine);
+      }
+
+      // Camera
+      camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 10000);
+      if (rawDefinition.camera && rawDefinition.camera.position) {
+        camera.position.set(...rawDefinition.camera.position);
+      } else {
+        camera.position.set(100, 100, 100);
+      }
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setClearColor(0x000000, 0); // Transparent clear color
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      container.appendChild(renderer.domElement);
+
+      // Controls
+      controls = new OrbitControls(camera, renderer.domElement);
+      if (rawDefinition.camera && rawDefinition.camera.target) {
+        controls.target.set(...rawDefinition.camera.target);
+      }
+      controls.enableDamping = true;
+      window.__camera = camera;
+      window.__controls = controls;
+
+      // View Controls Overlay
+      renderViewControls(document.getElementById('view-controls'), camera, controls, THREE);
+
+      window.addEventListener('resize', onWindowResize);
+      animate();
+    }
+
+    function onWindowResize() {
+      const container = document.getElementById('canvas-container');
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+
+      // Update ALL LineMaterial objects resolution
+      scene.traverse(child => {
+        if (child.isLine2 && child.material) {
+          child.material.resolution.set(container.clientWidth, container.clientHeight);
+        }
+      });
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // --- INPUT GENERATION (Ported) ---
+    function createControl(param, container) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'control-group';
+
+      if (param.paramType === 'Integer' || param.paramType === 'Number') {
+        const label = document.createElement('label');
+        label.innerText = param.name;
+        wrapper.appendChild(label);
+
+        let defaultValue = Number(param.default || 0);
+        inputs[param.name] = defaultValue;
+
+        const valDisplay = document.createElement('div');
+        valDisplay.className = 'val-display-static';
+        valDisplay.innerText = defaultValue;
+        label.appendChild(valDisplay);
+
+        const hasMinMax = (param.minimum !== undefined && param.maximum !== undefined);
+        let slider = null;
+
+        if (hasMinMax) {
+          slider = document.createElement('input');
+          slider.type = 'range';
+          slider.min = param.minimum;
+          slider.max = param.maximum;
+          slider.step = (param.paramType === 'Integer') ? 1 : 0.01;
+          slider.value = defaultValue;
+
+          slider.addEventListener('input', (e) => {
+            const val = Number(e.target.value);
+            valDisplay.innerText = val;
+            inputs[param.name] = val;
+          });
+          slider.addEventListener('mouseup', () => {
+            if (liveCompute) triggerSolve();
+          });
+          wrapper.appendChild(slider);
+        }
+
+        valDisplay.onclick = () => openModal(param.name, valDisplay, slider, (param.paramType === 'Integer'));
+
+      } else if (param.paramType === 'Boolean') {
+        const label = document.createElement('label');
+        label.innerText = param.name;
+        wrapper.appendChild(label);
+
+        const toggle = document.createElement('div');
+        toggle.className = 'toggle';
+        inputs[param.name] = (param.default === 'true' || param.default === true);
+
+        const updateToggle = () => {
+          toggle.innerText = inputs[param.name] ? "True" : "False";
+          if (inputs[param.name]) toggle.classList.add('active');
+          else toggle.classList.remove('active');
+        };
+        updateToggle();
+
+        toggle.onclick = () => {
+          inputs[param.name] = !inputs[param.name];
+          updateToggle();
+          if (liveCompute) triggerSolve();
+        };
+        wrapper.appendChild(toggle);
+      } else {
+        // Unsupported parameter type
+        const label = document.createElement('label');
+        label.innerText = param.name;
+        wrapper.appendChild(label);
+
+        const comingSoon = document.createElement('div');
+        comingSoon.style.color = 'var(--base-content)';
+        comingSoon.style.opacity = '0.6';
+        comingSoon.style.fontStyle = 'italic';
+        comingSoon.style.marginTop = '4px';
+        comingSoon.style.fontSize = '0.9em';
+        comingSoon.innerText = `Sorry, ${param.paramType} coming soon!`;
+        wrapper.appendChild(comingSoon);
+      }
+
+      container.appendChild(wrapper);
+    }
+
+    function setupModal() {
+      const modal = document.getElementById('value-modal');
+      const saveBtn = document.getElementById('modalSaveBtn');
+      const cancelBtn = document.getElementById('modalCancelBtn');
+      const input = document.getElementById('modalInput');
+
+      cancelBtn.onclick = () => modal.style.display = 'none';
+
+      saveBtn.onclick = () => {
+        const val = Number(input.value);
+        if (activeParamName) {
+          inputs[activeParamName] = val;
+          if (activeDisplayEl) activeDisplayEl.innerText = val;
+          if (activeSliderEl) activeSliderEl.value = val;
+          if (liveCompute) triggerSolve();
+        }
+        modal.style.display = 'none';
+      }
+    }
+
+    function openModal(paramName, displayEl, sliderEl, isInt) {
+      activeParamName = paramName;
+      activeDisplayEl = displayEl;
+      activeSliderEl = sliderEl;
+
+      const modal = document.getElementById('value-modal');
+      const input = document.getElementById('modalInput');
+      const title = document.getElementById('modalTitle');
+
+      title.innerText = `Set ${paramName}`;
+      input.value = inputs[paramName];
+      input.step = isInt ? 1 : 'any';
+
+      modal.style.display = 'flex';
+      input.focus();
+    }
+
+    // --- SOLVER LOGIC ---
+    async function triggerSolve() {
+      const loader = document.getElementById('loader');
+      loader.style.display = 'block';
+
+      try {
+        const requestData = {
+          definition: definitionName,
+          inputs: inputs
+        };
+
+        const res = await fetch('/solve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestData)
+        });
+
+        if (!res.ok) throw new Error(await res.text());
+
+        const data = await res.json();
+
+        // Clear Scene
+        const toRemove = [];
+        scene.traverse(child => { if (child.name === "generated_geo") toRemove.push(child); });
+        toRemove.forEach(c => scene.remove(c));
+
+        outputLayers = {};
+        const keyContainer = document.getElementById('layer-key-container');
+        if (keyContainer) keyContainer.innerHTML = '';
+
+        if (data.values) {
+          handleResponse(data.values);
+        }
+
+      } catch (err) {
+        console.error("Solve Failed", err);
+        // Could show error toast
+      } finally {
+        loader.style.display = 'none';
+      }
+    }
+
+    // --- HELPERS ---
+    function appendToOutputLog(paramName, text) {
+      const logContainer = document.getElementById('output-log');
+
+      // Clear placeholder on first append
+      if (logContainer.firstElementChild && logContainer.firstElementChild.innerText === 'Awaiting compute...') {
+        logContainer.innerHTML = '';
+      }
+
+      const entry = document.createElement('div');
+      entry.style.borderBottom = '1px dashed var(--border-color, #eee)';
+      entry.style.paddingBottom = '5px';
+      entry.style.marginBottom = '5px';
+
+      const timeSpan = document.createElement('span');
+      timeSpan.style.color = 'var(--base-content)';
+      timeSpan.style.opacity = '0.6';
+      timeSpan.style.marginRight = '8px';
+      timeSpan.innerText = '[' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ']';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.style.fontWeight = 'bold';
+      nameSpan.style.color = 'var(--primary)';
+      nameSpan.style.marginRight = '8px';
+      nameSpan.innerText = paramName ? paramName + ':' : 'Sys:';
+
+      const textSpan = document.createElement('span');
+      textSpan.style.color = 'var(--base-content)';
+      textSpan.innerText = (typeof text === 'object') ? JSON.stringify(text) : String(text);
+
+      entry.appendChild(timeSpan);
+      entry.appendChild(nameSpan);
+      entry.appendChild(textSpan);
+
+      logContainer.appendChild(entry);
+
+      // Auto-scroll to bottom
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    function handleResponse(values) {
+      // Import rhino3dm library (already loaded)
+      rhino3dm().then(rhino => {
+
+        let colorIdx = 0;
+        let totalSuccessfullyLoaded = 0;
+        const layerKeyContainer = document.getElementById('layer-key-container');
+        let totalFailedToLoad = 0;
+
+        // Helper to convert rhino mesh to THREE mesh
+        const rhinoMeshToThreejs = (mesh, material) => {
+          try {
+            const vertices = mesh.vertices();
+            const faces = mesh.faces();
+            const count = vertices.count;
+            const fcount = faces.count;
+
+            const positions = [];
+            for (let i = 0; i < count; i++) {
+              const pt = vertices.get(i);
+              positions.push(pt[0], pt[1], pt[2]);
+            }
+
+            const indices = [];
+            for (let i = 0; i < fcount; i++) {
+              const face = faces.get(i);
+              indices.push(face[0], face[1], face[2]);
+              if (face[2] !== face[3]) {
+                indices.push(face[2], face[3], face[0]);
+              }
+            }
+
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geo.setIndex(indices);
+            geo.computeVertexNormals();
+
+            const threeMesh = new THREE.Mesh(geo, material);
+
+            vertices.delete();
+            faces.delete();
+            return threeMesh;
+          } catch (e) {
+            console.warn("Manual mesh decoding failed:", e);
+            return null;
+          }
+        };
+
+        // Helper to convert rhino curve to THREE line
+        const rhinoCurveToThreejs = (curve, material) => {
+          const points = [];
+          const count = 100; // Resolution matching original
+          const domain = curve.domain;
+          for (let i = 0; i <= count; i++) {
+            const t = domain[0] + (i / count) * (domain[1] - domain[0]);
+            const pt = curve.pointAt(t);
+            points.push(pt[0], pt[1], pt[2]); // Flat array for LineGeometry
+          }
+
+          const geo = new LineGeometry();
+          geo.setPositions(points);
+
+          const line = new Line2(geo, material);
+          line.computeLineDistances();
+          // Scale to viewport required for LineMaterial
+          if (renderer) line.scale.set(1, 1, 1);
+          return line;
+        };
+
+        values.forEach(item => {
+          const tree = item.InnerTree;
+          const paramName = item.ParamName;
+          if (!tree) return;
+
+          // Pick a color for this output branch
+          const currentLayerIdx = colorIdx;
+          const color = currentPalette[colorIdx % currentPalette.length];
+          const cssColor = '#' + color.toString(16).padStart(6, '0');
+          colorIdx++;
+
+          const layerData = {
+            colorIdx: currentLayerIdx,
+            threeObjects: [],
+            colorSwatches: [],
+            layerToggles: [] // Also store toggles to update their background hue dynamically!
+          };
+          outputLayers[paramName] = layerData;
+
+          // Build Key UI
+          if (layerKeyContainer) {
+            const keyItem = document.createElement('div');
+            keyItem.className = 'layer-key-item';
+
+            const swatchCombo = document.createElement('div');
+            swatchCombo.style.display = 'flex';
+            swatchCombo.style.alignItems = 'center';
+
+            const swatch = document.createElement('div');
+            swatch.className = 'layer-color-swatch';
+            swatch.style.backgroundColor = color;
+            layerData.colorSwatches.push(swatch);
+
+            const nameLabel = document.createElement('div');
+            nameLabel.className = 'layer-name';
+            nameLabel.innerText = paramName;
+
+            swatchCombo.appendChild(swatch);
+            swatchCombo.appendChild(nameLabel);
+
+            const toggleBtn = document.createElement('div');
+            toggleBtn.className = 'layer-toggle active';
+            toggleBtn.style.background = cssColor; // Match branch color initially
+            toggleBtn.onclick = () => {
+              const isActive = toggleBtn.classList.contains('active');
+              if (isActive) {
+                toggleBtn.classList.remove('active');
+                toggleBtn.style.background = ''; // Use default CSS var variable for inactive
+                layerData.threeObjects.forEach(obj => obj.visible = false);
+              } else {
+                toggleBtn.classList.add('active');
+
+                // If it was toggled on after theme changed, the color map might have updated 
+                const curColor = currentPalette[layerData.colorIdx % currentPalette.length];
+                toggleBtn.style.background = '#' + curColor.toString(16).padStart(6, '0');
+
+                layerData.threeObjects.forEach(obj => obj.visible = true);
+              }
+            };
+
+            layerData.layerToggles.push(toggleBtn);
+            keyItem.appendChild(swatchCombo);
+            keyItem.appendChild(toggleBtn);
+            layerKeyContainer.appendChild(keyItem);
+          }
+
+          const material = new LineMaterial({
+            color: color,
+            linewidth: 3, // In pixels
+            resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+            dashed: false
+          });
+          const meshMaterial = new THREE.MeshStandardMaterial({
+            color: color,
+            side: THREE.DoubleSide,
+            metalness: 0.2,
+            roughness: 0.8
+          });
+
+          // Metrics for this specific parameter
+          let paramStats = {};
+
+          Object.values(tree).forEach(branch => {
+            branch.forEach(chunk => {
+              if (!chunk.data) return;
+
+              let typeName = "unknown";
+              let threeObj = null;
+
+              try {
+                let parsedData;
+                let isGeometry = false;
+
+                try {
+                  parsedData = JSON.parse(chunk.data);
+                  if (parsedData && (parsedData.type !== undefined || parsedData.version !== undefined || parsedData.archive3dm !== undefined)) {
+                    isGeometry = true;
+                  }
+                } catch (parseErr) {
+                  parsedData = chunk.data;
+                  isGeometry = false;
+                }
+
+                if (!isGeometry) {
+                  // Not geometry, just text or data
+                  typeName = "text/data";
+                  paramStats[typeName] = (paramStats[typeName] || 0) + 1;
+                  appendToOutputLog(paramName, parsedData);
+                  return;
+                }
+
+                const rhinoObject = parsedData;
+                typeName = rhinoObject.type || "Geometry";
+
+                // Native THREE mapping
+                if (rhinoObject.toThreejsJSON) {
+                  try {
+                    const loader = new THREE.BufferGeometryLoader();
+                    const json = rhinoObject.toThreejsJSON();
+                    const geo = loader.parse(json);
+
+                    if (rhinoObject.type && rhinoObject.type.includes("Mesh")) {
+                      threeObj = new THREE.Mesh(geo, meshMaterial);
+                    } else {
+                      // Fallback for raw JSON conversion to lines, though rare
+                      const lineGeo = new LineGeometry();
+                      const positions = geo.attributes.position.array;
+                      lineGeo.setPositions(positions);
+                      threeObj = new Line2(lineGeo, material);
+                      threeObj.computeLineDistances();
+                    }
+                  } catch (e) {
+                    console.warn("Native toThreejsJSON failed...", e);
+                  }
+                }
+
+                // Rhino3dm mapping fallback
+                if (!threeObj) {
+                  const ro = rhino.CommonObject.decode(rhinoObject);
+                  if (ro) {
+                    typeName = ro.constructor.name || typeName;
+
+                    if (ro instanceof rhino.Curve) {
+                      threeObj = rhinoCurveToThreejs(ro, material);
+                    } else if (ro instanceof rhino.Mesh) {
+                      threeObj = rhinoMeshToThreejs(ro, meshMaterial);
+                    } else if (ro instanceof rhino.Point) {
+                      const pt = ro.location;
+                      const geo = new THREE.BufferGeometry();
+                      geo.setAttribute('position', new THREE.Float32BufferAttribute([pt[0], pt[1], pt[2]], 3));
+                      const dotMaterial = new THREE.PointsMaterial({ color: color, size: 3, sizeAttenuation: false });
+                      threeObj = new THREE.Points(geo, dotMaterial);
+                    } else if (ro instanceof rhino.Brep) {
+                      const faces = ro.faces();
+                      const meshGroup = new THREE.Group();
+                      for (let i = 0; i < faces.count; i++) {
+                        const face = faces.get(i);
+                        const mesh = face.getMesh(rhino.MeshType.Any);
+                        if (mesh) {
+                          const threeMesh = rhinoMeshToThreejs(mesh, meshMaterial);
+                          if (threeMesh) meshGroup.add(threeMesh);
+                          mesh.delete();
+                        }
+                        face.delete();
+                      }
+                      faces.delete();
+
+                      if (meshGroup.children.length > 0) {
+                        threeObj = meshGroup;
+                        typeName = `Brep (extracted ${meshGroup.children.length} meshes)`;
+                      } else {
+                        // Fallback to plotting edges as wireframe
+                        const edges = ro.edges();
+                        if (edges.count > 0) {
+                          const edgeGroup = new THREE.Group();
+                          for (let i = 0; i < edges.count; i++) {
+                            const curve = edges.get(i);
+                            const threeCurve = rhinoCurveToThreejs(curve, material);
+                            if (threeCurve) edgeGroup.add(threeCurve);
+                            curve.delete();
+                          }
+                          threeObj = edgeGroup;
+                          typeName = `Brep (wireframe, ${edges.count} edges)`;
+                        } else {
+                          console.warn("Brep detected but no render meshes or edges could be extracted.");
+                        }
+                        edges.delete();
+                      }
+                    }
+                    ro.delete(); // cleanup
+                  }
+                }
+
+                paramStats[typeName] = (paramStats[typeName] || 0) + 1;
+
+                if (threeObj) {
+                  totalSuccessfullyLoaded++;
+                  threeObj.name = "generated_geo";
+                  threeObj.rotation.x = -Math.PI / 2; // Flip Y/Z for ThreeJS
+                  scene.add(threeObj);
+                  layerData.threeObjects.push(threeObj);
+                } else {
+                  totalFailedToLoad++;
+                }
+
+              } catch (e) {
+                paramStats[typeName] = (paramStats[typeName] || 0) + 1;
+                totalFailedToLoad++;
+                console.warn("Failed to process object", e);
+              }
+            });
+          });
+
+          // Summary string for this parameter
+          let summaryStrParts = [];
+          for (const [t, count] of Object.entries(paramStats)) {
+            summaryStrParts.push(`${count} ${t}`);
+          }
+          if (summaryStrParts.length > 0) {
+            appendToOutputLog(paramName, summaryStrParts.join(", "));
+          }
+        });
+
+        // Add overall status tally
+        if (totalSuccessfullyLoaded > 0 || totalFailedToLoad > 0) {
+          appendToOutputLog("", `${totalSuccessfullyLoaded} items successfully loaded, ${totalFailedToLoad} items failed to load.`);
+        }
+      });
+    }
+
+  </script>
+</body>
+
 </html>

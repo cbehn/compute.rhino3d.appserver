@@ -1,0 +1,21 @@
+{
+    "description": "Parametric Script used to generate the eye shapes for the Populus Hotel. Parametric logic written in 2022 by Cameron Behning. Design by Studio Gang Architects",
+    "date": "2022-08-06",
+    "version": "2.18",
+    "camera": {
+        "position": [
+            -50,
+            150,
+            350
+        ],
+        "target": [
+            100,
+            100,
+            0
+        ]
+    },
+    "defaultTheme": "luxury",
+    "grid": {
+        "visible": false
+    }
+}
