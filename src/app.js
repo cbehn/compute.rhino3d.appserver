@@ -5,18 +5,17 @@ const logger = require('morgan')
 const cors = require('cors')
 const fs = require('fs');
 const path = require('path');
-const fetch = require('node-fetch'); 
-const { ComputeManagementClient } = require("@azure/arm-compute");
-const { DefaultAzureCredential } = require("@azure/identity");
+const fetch = require('node-fetch');
+const azureService = require('./services/azure-service')
 
 // create express web server app
 const app = express()
 
 // log requests to the terminal when running in a local debug setup
-if(process.env.NODE_ENV !== 'production')
+if (process.env.NODE_ENV !== 'production')
   app.use(logger('dev'))
 
-app.use(express.json({limit: '10mb'}))
+app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: false }))
 app.use(cors())
 app.use(compression())
@@ -34,115 +33,29 @@ console.log('RHINO_COMPUTE_URL: ' + process.env.RHINO_COMPUTE_URL)
 //   AZURE COMPUTE POWER MANAGEMENT & IDLE SHUTDOWN
 // =============================================================================
 
-const AZURE_SUB_ID = process.env.AZURE_SUBSCRIPTION_ID;
-const AZURE_RG = process.env.AZURE_RESOURCE_GROUP;
-const AZURE_VM = process.env.AZURE_VM_NAME;
-const IDLE_LIMIT_MS = process.env.IDLE_SHUTDOWN_LIMIT_MINUTES * 60 * 1000 || 30 * 60 * 1000; // default to 30 minutes
-const SHUTDOWN_CHECK_INTERVAL = process.env.SHUTDOWN_CHECK_INTERVAL * 1000 || 60 * 1000 // in seconds
-
-// --- NEW: Shared File-Based Heartbeat ---
-const ACTIVITY_FILE = path.join(__dirname, '.last_activity');
-
-// Update the file timestamp to "now"
-function touchActivity() {
-    try {
-        const time = Date.now().toString();
-        fs.writeFileSync(ACTIVITY_FILE, time, 'utf8');
-    } catch (err) {
-        console.error("Error updating activity file:", err);
-    }
-}
-
-// Read the timestamp (returns ms since epoch)
-function getLastActivity() {
-    try {
-        if (!fs.existsSync(ACTIVITY_FILE)) return Date.now(); // Default to now if missing
-        const content = fs.readFileSync(ACTIVITY_FILE, 'utf8');
-        return parseInt(content, 10) || Date.now();
-    } catch (err) {
-        console.error("Error reading activity file:", err);
-        return Date.now(); // Fail safe to "active"
-    }
-}
-
-// Initialize on boot
-touchActivity();
-let isVmActionInProgress = false;
-
 // Middleware to update last activity on solve requests
 app.use('/solve', (req, res, next) => {
-    touchActivity(); // Write to disk
-    res.on('finish', () => { touchActivity(); });
-    next();
+  azureService.touchActivity(); // Write to disk
+  res.on('finish', () => { azureService.touchActivity(); });
+  next();
 });
-
-// Helper to get Azure Client
-function getComputeClient() {
-    if (!AZURE_SUB_ID || !AZURE_RG || !AZURE_VM) return null;
-    const credential = new DefaultAzureCredential();
-    return new ComputeManagementClient(credential, AZURE_SUB_ID);
-}
 
 // Route to manually wake up the VM
 app.post('/wakeup', async (req, res) => {
-    const client = getComputeClient();
-    if (!client) {
-        return res.status(500).json({ error: "Azure environment variables not set." });
-    }
-    
-    // Avoid spamming start commands
-    if (isVmActionInProgress) {
-        return res.status(202).json({ message: "VM action already in progress." });
-    }
-
-    try {
-        isVmActionInProgress = true;
-        console.log(`Starting Azure VM: ${AZURE_VM}...`);
-        // We use beginStart but don't wait for completion so the UI can poll health check
-        await client.virtualMachines.beginStart(AZURE_RG, AZURE_VM);
-        res.json({ message: "Start command sent." });
-    } catch (err) {
-        console.error("Failed to start VM:", err);
-        res.status(500).json({ error: err.message });
-    } finally {
-        isVmActionInProgress = false;
-        // Reset idle timer so we don't shut down immediately after waking
-        touchActivity(); 
-    }
+  try {
+    const result = await azureService.startVM();
+    res.status(result.status).json({ message: result.message, error: result.error });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// IDLE CHECKER (Runs every minute)
-// Shuts down VM if idle for > 30 mins
-setInterval(async () => {
-    const IDLE_LIMIT = IDLE_LIMIT_MS; 
-    
-    // Read from shared file
-    const lastActivity = getLastActivity();
-    const timeSinceActive = Date.now() - lastActivity;
+// --- NEW: Robust Status Check Endpoint ---
+app.get('/wakeStatus', async (req, res) => {
+  const status = await azureService.getWakeStatus();
+  res.json(status);
+});
 
-    if (timeSinceActive > IDLE_LIMIT && !isVmActionInProgress) {
-        const client = getComputeClient();
-        if (client) {
-            try {
-                // Check status first to avoid errors if already stopped
-                const instanceView = await client.virtualMachines.instanceView(AZURE_RG, AZURE_VM);
-                const isRunning = instanceView.statuses.some(s => s.code && s.code.includes("PowerState/running"));
-
-                if (isRunning) {
-                    console.log(`VM idle for ${Math.floor(timeSinceActive/60000)} mins. Stopping VM...`);
-                    isVmActionInProgress = true;
-                    // beginDeallocate stops billing; beginPowerOff does not.
-                    await client.virtualMachines.beginDeallocate(AZURE_RG, AZURE_VM);
-                    console.log("VM Deallocation initiated.");
-                }
-            } catch (err) {
-                console.error("Idle shutdown error:", err.message);
-            } finally {
-                isVmActionInProgress = false;
-            }
-        }
-    }
-}, SHUTDOWN_CHECK_INTERVAL)
 // =============================================================================
 
 app.set('view engine', 'hbs');
@@ -150,6 +63,7 @@ app.set('views', './src/views')
 
 // Routes for this app
 app.use('/cnc', express.static(__dirname + '/pages/cnc'))
+app.use('/projects', express.static(__dirname + '/pages/projects'))
 app.use('/health', express.static(__dirname + '/pages/health'))
 app.get('/favicon.ico', (req, res) => res.sendFile(path.join(__dirname, 'files', 'favicon.ico')))
 app.use('/definition', require('./routes/definition'))
@@ -157,23 +71,26 @@ app.use('/definition', require('./routes/definition'))
 // --- NEW: Proxy Healthcheck to Compute Server ---
 app.get('/healthcheck', async (req, res) => {
   const computeUrl = process.env.RHINO_COMPUTE_URL;
-  const apiKey = process.env.RHINO_COMPUTE_KEY; 
-  
+  const apiKey = process.env.RHINO_COMPUTE_KEY;
+
   // Ensure we construct the URL correctly regardless of trailing slash
   const url = computeUrl.endsWith('/') ? computeUrl + 'healthcheck' : computeUrl + '/healthcheck';
 
   try {
+    // Touch activity since this is a health check likely from the UI
+    azureService.touchActivity();
+
     const response = await fetch(url, {
-        headers: {
-            'RhinoComputeKey': apiKey 
-        }
+      headers: {
+        'RhinoComputeKey': apiKey
+      }
     });
 
     if (response.ok) {
-        const text = await response.text();
-        res.status(200).send(text); // Usually returns "healthy"
+      const text = await response.text();
+      res.status(200).send(text); // Usually returns "healthy"
     } else {
-        res.status(response.status).send(`Compute Server returned ${response.status}`);
+      res.status(response.status).send(`Compute Server returned ${response.status}`);
     }
   } catch (error) {
     res.status(500).send(`AppServer could not reach Compute Server: ${error.message}`);
@@ -195,8 +112,8 @@ app.get('/api/health/files', (req, res) => {
 // 2. API: Check API Key (Server-side to protect the key)
 app.get('/api/health/check-auth', async (req, res) => {
   const computeUrl = process.env.RHINO_COMPUTE_URL;
-  const apiKey = process.env.RHINO_COMPUTE_KEY; 
-  
+  const apiKey = process.env.RHINO_COMPUTE_KEY;
+
   const url = computeUrl.endsWith('/') ? computeUrl + 'healthcheck' : computeUrl + '/healthcheck';
 
   try {
@@ -238,25 +155,30 @@ app.use('/view', require('./routes/template'))
 app.use('/version', require('./routes/version'))
 app.use('/', require('./routes/index'))
 app.use('/files', express.static(__dirname + '/files'));
+app.use('/public', express.static(__dirname + '/public'));
 
 // ref: https://github.com/expressjs/express/issues/3589
 // remove line when express@^4.17
 express.static.mime.types["wasm"] = "application/wasm";
 
 // catch 404 and forward to error handler
-app.use(function(req, res, next) {
+app.use(function (req, res, next) {
   next(createError(404))
 })
 
 // error handler
-app.use(function(err, req, res, next) {
+app.use(function (err, req, res, next) {
+  // Catch 413 Payload Too Large
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Payload Too Large', message: 'The uploaded file exceeds the 10MB limit. Please upload a smaller file.' });
+  }
+
   // set locals, only providing error in development
   res.locals.message = err.message
   console.error(err)
   res.locals.error = req.app.get('env') === 'development' ? err : {}
-  data = { message: err.message }
-  if (req.app.get('env') === 'development')
-  {
+  const data = { message: err.message }
+  if (req.app.get('env') === 'development') {
     data.stack = err.stack
   }
   // send the error

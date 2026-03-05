@@ -1,0 +1,21 @@
+{
+    "description": "Parametric Master Plan for Urban Development. This script creating building masses, bike paths, and shading then performance Direct Sun Alaysis using Ladybug.",
+    "date": "2026-03-04",
+    "version": "1.0",
+    "camera": {
+        "position": [
+            -680,
+            940,
+            -1200
+        ],
+        "target": [
+            -60,
+            10,
+            120
+        ]
+    },
+    "defaultTheme": "cyberpunk",
+    "grid": {
+        "visible": false
+    }
+}
