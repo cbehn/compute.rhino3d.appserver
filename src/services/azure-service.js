@@ -171,7 +171,7 @@ class AzureService {
     const lastActivity = this.getLastActivity();
     const timeSince = Date.now() - lastActivity;
 
-    if (timeSince > IDLE_LIMIT_MS && !this.isVmActionInProgress) {
+    if (timeSince > IDLE_LIMIT_MS && !this.isVmActionInProgress && IDLE_LIMIT_MS !== 0) {
       console.log(`[Watchdog] Idle for ${Math.floor(timeSince / 60000)}m. Checking status...`);
       const client = this._getClient();
 
