@@ -17,5 +17,19 @@
     "defaultTheme": "cyberpunk",
     "grid": {
         "visible": false
+    },
+    "defaultModels": [
+        "not right now.3dm"
+    ],
+    "dropdowns": {
+        "Grid Type": {
+            "Vornoi": 0,
+            "Hex": 1
+        },
+        "Bike Path Type": {
+            "Complete Graph": 0,
+            "Delaney": 1,
+            "Geometric Span": 2
+        }
     }
 }

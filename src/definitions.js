@@ -115,6 +115,8 @@ function scanDirectory(dir, category) {
           if (metadata.camera) def.camera = metadata.camera
           if (metadata.defaultTheme) def.defaultTheme = metadata.defaultTheme
           if (metadata.grid) def.grid = metadata.grid
+          if (metadata.defaultModels) def.defaultModels = metadata.defaultModels
+          if (metadata.dropdowns) def.dropdowns = metadata.dropdowns
 
         } catch (err) {
           console.error(`Error reading sidecar for ${fileName}:`, err)
@@ -201,6 +203,11 @@ async function getParams(definitionPath) {
     let outputs = result.outputs || result.Outputs || result.outputNames
     const description = result.description || result.Description || ''
 
+    // In order to allow waking the server to still populate the UI with sidecar settings, we need to extract and pass them.
+    // getParams does not inherently have access to `def` directly, but the app server definitions array holds it.
+    // However, it's safer/cleaner to just fetch to let the caller inject the known definition properties.
+    // For now, we mainly return exactly what the Compute server returned, AND the properties we know about are added upstream in `template.js` and `definition.js`.
+
     // Determine view visibility (legacy logic)
     let view = true
     if (inputs) {
@@ -210,6 +217,11 @@ async function getParams(definitionPath) {
         }
       })
     }
+
+    // Pass the raw definition metadata through via a lookup using the hash if it exists to attach the specific metadata.
+    // We already have `definitions` array memory.
+    // Note: getParams is called from template.js AND definition.js. 
+    // They both have the definition object. template.js caches it, definition.js sends it.
 
     return { description, inputs, outputs, view }
 

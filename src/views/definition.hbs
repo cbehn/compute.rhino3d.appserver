@@ -514,6 +514,13 @@
             // Update parameter definitions dynamically instead of reloading the page
             paramDefs = data.inputs || [];
             rawDefinition.status = 'live';
+
+            // Also update rawDefinition properties from sidecar if previously offline
+            if (data.camera) rawDefinition.camera = data.camera;
+            if (data.defaultTheme) rawDefinition.defaultTheme = data.defaultTheme;
+            if (data.grid) rawDefinition.grid = data.grid;
+            if (data.defaultModels) rawDefinition.defaultModels = data.defaultModels;
+            if (data.dropdowns) rawDefinition.dropdowns = data.dropdowns;
           }
         } catch (e) {
           console.error("Failed to fetch fresh definition", e);
@@ -639,6 +646,37 @@
         scene.add(yAxisLine);
       }
 
+      // Load Default Models (.3dm Context Geometry)
+      if (rawDefinition.defaultModels) {
+        // Ensure rhino3dm logic is initialized
+        rhino3dm().then(rhino => {
+          const loader = new Rhino3dmLoader();
+          loader.setLibraryPath('https://unpkg.com/rhino3dm@8.4.0/');
+
+          const modelsToLoad = Array.isArray(rawDefinition.defaultModels) ? rawDefinition.defaultModels : [rawDefinition.defaultModels];
+
+          modelsToLoad.forEach(modelName => {
+            const mLoader = document.getElementById('loader');
+            if (mLoader) mLoader.style.display = 'block';
+
+            console.log(`Loading context model: ${modelName}`);
+
+            // Try fetching from public/files first (assuming they are dropped in appserver/src/files)
+            loader.load(`/files/${modelName}`, function (object) {
+              object.name = 'default_geo';
+              // Standard Rhino-to-Three.js rotation
+              object.rotation.x = -Math.PI / 2;
+              scene.add(object);
+              console.log(`Loaded context model: ${modelName}`);
+              if (mLoader) mLoader.style.display = 'none';
+            }, undefined, function (error) {
+              console.warn(`Failed to load context model: ${modelName}`, error);
+              if (mLoader) mLoader.style.display = 'none';
+            });
+          });
+        });
+      }
+
       // Camera
       camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 10000);
       if (rawDefinition.camera && rawDefinition.camera.position) {
@@ -695,7 +733,45 @@
       const wrapper = document.createElement('div');
       wrapper.className = 'control-group';
 
-      if (param.paramType === 'Integer' || param.paramType === 'Number') {
+      // Check if this parameter has a dropdown override specified in sidecar JSON
+      let dropdownConfig = null;
+      if (rawDefinition.dropdowns && rawDefinition.dropdowns[param.name]) {
+        dropdownConfig = rawDefinition.dropdowns[param.name];
+      }
+
+      if (dropdownConfig) {
+        // --- DROPDOWN RENDER ---
+        const label = document.createElement('label');
+        label.innerText = param.name;
+        wrapper.appendChild(label);
+
+        // We assume dropdownConfig is an object { "Choice A": 0, "Choice B": 1 }
+        const select = document.createElement('select');
+        select.className = 'select select-bordered w-full';
+        select.style.marginTop = '8px';
+
+        let initialVal = param.default !== undefined ? Number(param.default) : Object.values(dropdownConfig)[0];
+        inputs[param.name] = initialVal;
+
+        for (const [key, value] of Object.entries(dropdownConfig)) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.innerText = key;
+          if (value === initialVal) {
+            option.selected = true;
+          }
+          select.appendChild(option);
+        }
+
+        select.addEventListener('change', (e) => {
+          inputs[param.name] = Number(e.target.value);
+          if (liveCompute) triggerSolve();
+        });
+
+        wrapper.appendChild(select);
+
+      } else if (param.paramType === 'Integer' || param.paramType === 'Number') {
+        // --- STANDARD NUMBER/SLIDER RENDER ---
         const label = document.createElement('label');
         label.innerText = param.name;
         wrapper.appendChild(label);
