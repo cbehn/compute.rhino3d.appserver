@@ -1,18 +1,16 @@
 /**
- * Provide routes for getting descriptive information about the definitions
- * available on this AppServer instance as well as details on the inputs and
- * outputs for a given definition
- * * Routes:
- * ('/')
- * Show landing page
- * ('/api/definitions')
- * Show list of definitions available (JSON)
- * ('/:definition')
- * Get definition input/output details for a definition installed in
- * this AppServer. These definitions are located in the 'files' directory
- * ('/definition_description?path=FILEPATH`)
- * Get definition input/output details for a definition at an absolute
- * path on the AppServer machine.
+ * routes/index.js — Landing page and definitions API.
+ *
+ * Serves the portfolio landing page, provides a JSON API to list available
+ * Grasshopper definitions, and offers routes to describe individual
+ * definitions (inputs, outputs, metadata). Also handles auto-rescanning
+ * the files directory if the definitions list is empty.
+ *
+ * Routes:
+ *  GET /                          — Landing page (landing.hbs)
+ *  GET /api/definitions           — JSON list of all registered definitions
+ *  GET /definition_description    — Describe a definition by file path
+ *  GET /:name                     — Describe a definition by filename
  */
 const express = require('express')
 const router = express.Router()

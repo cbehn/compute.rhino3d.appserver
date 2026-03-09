@@ -1,3 +1,18 @@
+/**
+ * app.js — Express application entry point.
+ *
+ * Sets up middleware (JSON parsing, CORS, compression, logging), mounts all
+ * route handlers, and wires up Azure VM power-management endpoints (wake,
+ * status, idle-shutdown heartbeat). Also exposes a health-check diagnostic
+ * API and a proxy to the upstream Rhino Compute /healthcheck endpoint.
+ *
+ * Key responsibilities:
+ *  - Configure RHINO_COMPUTE_URL (via env or --computeUrl CLI arg)
+ *  - Track solve-request activity for the idle-shutdown watchdog
+ *  - Mount /solve, /definition, /view, /version, and static-file routes
+ *  - Provide /wakeup, /wakeStatus, /healthcheck endpoints
+ *  - Global 404 and error handling
+ */
 const createError = require('http-errors')
 const express = require('express')
 const compression = require('compression')
@@ -43,6 +58,7 @@ app.use('/solve', (req, res, next) => {
 // Route to manually wake up the VM
 app.post('/wakeup', async (req, res) => {
   try {
+    azureService.touchActivity(); // Update last activity on wake up call
     const result = await azureService.startVM();
     res.status(result.status).json({ message: result.message, error: result.error });
   } catch (err) {
