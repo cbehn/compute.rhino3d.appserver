@@ -1,3 +1,9 @@
+/**
+ * routes/version.js — GET /version endpoint.
+ *
+ * Returns combined version information from both the AppServer (package.json)
+ * and the upstream Rhino Compute server as a single JSON response.
+ */
 const express = require('express')
 const router = express.Router()
 const compute = require('compute-rhino3d')

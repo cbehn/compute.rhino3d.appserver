@@ -1,3 +1,17 @@
+<!--
+  definition.hbs — Auto-generated experiment page template.
+
+  Renders a full interactive UI for a single Grasshopper definition:
+    - Left sidebar: theme selector, compute controls, dynamically generated
+      input sliders/toggles/dropdowns, and an output log.
+    - Right pane: Three.js 3D canvas with orbit controls, grid, axis markers,
+      optional default .3dm context geometry, and per-output layer toggles.
+    - Startup overlay: if the Compute server is offline, shows a TV-test-pattern
+      loading screen while it boots.
+
+  Data is injected server-side via the {{{definitionJson}}} Handlebars variable.
+  Client-side code is an ES module using Three.js, rhino3dm, and ui-components.js.
+-->
 <!DOCTYPE html>
 <html>
 

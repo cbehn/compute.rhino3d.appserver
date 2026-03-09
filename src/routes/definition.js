@@ -1,3 +1,15 @@
+/**
+ * routes/definition.js — Grasshopper definition file server.
+ *
+ * Serves raw .gh/.ghx files to the Rhino Compute server (which downloads
+ * them by MD5 hash URL during a solve) and provides a /:name/info endpoint
+ * that returns parsed inputs, outputs, and sidecar metadata as JSON for
+ * the frontend to build its UI.
+ *
+ * Routes:
+ *  GET /definition/:name/info — JSON with inputs, outputs, camera, theme, etc.
+ *  GET /definition/:id        — raw Grasshopper file download (by MD5 hash)
+ */
 const express = require('express')
 let router = express.Router()
 const definitions = require('../definitions') // Import the definitions module

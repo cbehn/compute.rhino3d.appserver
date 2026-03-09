@@ -1,3 +1,18 @@
+/**
+ * definitions.js — Grasshopper definition registry and parameter fetcher.
+ *
+ * Scans the src/files/ and src/pages/cnc/scripts/ directories for .gh/.ghx
+ * Grasshopper definitions, reads any companion sidecar JSON files, and builds
+ * an in-memory definitions list used by routes to serve the UI and API.
+ *
+ * Key exports:
+ *  - registerDefinitions() — scans directories and returns the definitions array
+ *  - getParams(definitionPath) — sends the definition to Rhino Compute's /io
+ *    endpoint and returns parsed inputs, outputs, and metadata
+ *
+ * Also contains helpers for extracting default values from Rhino DataTree
+ * structures and casting string values to their correct JS types.
+ */
 const fs = require('fs')
 const path = require('path')
 const md5File = require('md5-file')

@@ -1,3 +1,19 @@
+/**
+ * azure-service.js — Azure VM power-management service.
+ *
+ * Manages the lifecycle of the Azure VM running Rhino Compute. Provides
+ * methods to start the VM, check its status (multi-step: Azure → healthcheck
+ * → version), and automatically deallocate it after a configurable idle
+ * period to save costs.
+ *
+ * Key features:
+ *  - File-based activity heartbeat (.last_activity) shared across workers
+ *  - Lazy-loaded Azure client (gracefully degrades if env vars are missing)
+ *  - Multi-step wake-status check (VM power state → /healthcheck → /version)
+ *  - Idle watchdog (checkIdleAndShutdown) run by the master process
+ *
+ * Exports a singleton AzureService instance.
+ */
 const { ComputeManagementClient } = require("@azure/arm-compute");
 const { DefaultAzureCredential } = require("@azure/identity");
 const fs = require('fs');

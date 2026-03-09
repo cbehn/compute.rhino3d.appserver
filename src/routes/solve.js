@@ -1,3 +1,17 @@
+/**
+ * routes/solve.js — POST /solve endpoint.
+ *
+ * Receives a definition name and input values from the frontend, reads the
+ * Grasshopper file from disk, and forwards a base64-encoded solve request to
+ * the upstream Rhino Compute /grasshopper endpoint. Includes automatic
+ * retry logic: if the first attempt fails with a network error, the server
+ * tries to wake the Azure VM and retries once.
+ *
+ * Key details:
+ *  - Inputs are formatted into the Rhino DataTree structure before sending
+ *  - A 120-second timeout is enforced via AbortController
+ *  - Non-OK responses that still contain valid compute values are forwarded as 200
+ */
 const express = require('express')
 const router = express.Router()
 const fs = require('fs').promises // Use the Promise API for non-blocking file reads
