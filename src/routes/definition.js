@@ -1,3 +1,15 @@
+/**
+ * routes/definition.js — Grasshopper definition file server.
+ *
+ * Serves raw .gh/.ghx files to the Rhino Compute server (which downloads
+ * them by MD5 hash URL during a solve) and provides a /:name/info endpoint
+ * that returns parsed inputs, outputs, and sidecar metadata as JSON for
+ * the frontend to build its UI.
+ *
+ * Routes:
+ *  GET /definition/:name/info — JSON with inputs, outputs, camera, theme, etc.
+ *  GET /definition/:id        — raw Grasshopper file download (by MD5 hash)
+ */
 const express = require('express')
 let router = express.Router()
 const definitions = require('../definitions') // Import the definitions module
@@ -16,20 +28,33 @@ const definitions = require('../definitions') // Import the definitions module
  * Using a hash keeps the urls hard to find and also the same until a
  * definition is modified. 
  */
-router.get('/:name/info', async function(req, res, next) {
+router.get('/:name/info', async function (req, res, next) {
   try {
     let definition = req.app.get('definitions').find(o => o.name === req.params.name)
-    if(!definition) return next(new Error('Definition not found'))
+    if (!definition) return next(new Error('Definition not found'))
 
     // FIX: Pass the local path (definition.path), NOT a URL
     let params = await definitions.getParams(definition.path)
 
-    res.json(params)
-  } catch(error) {
+    // Inject the sidecar variables we loaded in `scanDirectory` so the frontend can receive them on wake
+    let responsePayload = {
+      inputs: params.inputs,
+      outputs: params.outputs,
+      description: params.description,
+      view: params.view,
+      camera: definition.camera,
+      defaultTheme: definition.defaultTheme,
+      grid: definition.grid,
+      defaultModels: definition.defaultModels,
+      dropdowns: definition.dropdowns
+    }
+
+    res.json(responsePayload)
+  } catch (error) {
     next(error)
   }
 })
-router.get('/:id', function(req, res, next) {
+router.get('/:id', function (req, res, next) {
   let definition = req.app.get('definitions').find(o => o.id === req.params.id)
   const options = {
     headers: {
@@ -38,7 +63,7 @@ router.get('/:id', function(req, res, next) {
     }
   }
   res.sendFile(definition.path, options, (error) => {
-    if(error !== undefined)
+    if (error !== undefined)
       console.log(error)
   })
 })

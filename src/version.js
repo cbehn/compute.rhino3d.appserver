@@ -1,4 +1,10 @@
-
+/**
+ * version.js — Version information aggregator.
+ *
+ * Fetches the Rhino Compute server's /version endpoint and combines it with
+ * the AppServer's own version (from package.json). The merged result is
+ * returned to the /version route so clients can see both versions at once.
+ */
 const appserverVersion = require('../package.json').version
 
 async function getVersion() {

@@ -1,3 +1,17 @@
+<!--
+  definition.hbs — Auto-generated experiment page template.
+
+  Renders a full interactive UI for a single Grasshopper definition:
+    - Left sidebar: theme selector, compute controls, dynamically generated
+      input sliders/toggles/dropdowns, and an output log.
+    - Right pane: Three.js 3D canvas with orbit controls, grid, axis markers,
+      optional default .3dm context geometry, and per-output layer toggles.
+    - Startup overlay: if the Compute server is offline, shows a TV-test-pattern
+      loading screen while it boots.
+
+  Data is injected server-side via the {{{definitionJson}}} Handlebars variable.
+  Client-side code is an ES module using Three.js, rhino3dm, and ui-components.js.
+-->
 <!DOCTYPE html>
 <html>
 
@@ -514,6 +528,13 @@
             // Update parameter definitions dynamically instead of reloading the page
             paramDefs = data.inputs || [];
             rawDefinition.status = 'live';
+
+            // Also update rawDefinition properties from sidecar if previously offline
+            if (data.camera) rawDefinition.camera = data.camera;
+            if (data.defaultTheme) rawDefinition.defaultTheme = data.defaultTheme;
+            if (data.grid) rawDefinition.grid = data.grid;
+            if (data.defaultModels) rawDefinition.defaultModels = data.defaultModels;
+            if (data.dropdowns) rawDefinition.dropdowns = data.dropdowns;
           }
         } catch (e) {
           console.error("Failed to fetch fresh definition", e);
@@ -639,6 +660,37 @@
         scene.add(yAxisLine);
       }
 
+      // Load Default Models (.3dm Context Geometry)
+      if (rawDefinition.defaultModels) {
+        // Ensure rhino3dm logic is initialized
+        rhino3dm().then(rhino => {
+          const loader = new Rhino3dmLoader();
+          loader.setLibraryPath('https://unpkg.com/rhino3dm@8.4.0/');
+
+          const modelsToLoad = Array.isArray(rawDefinition.defaultModels) ? rawDefinition.defaultModels : [rawDefinition.defaultModels];
+
+          modelsToLoad.forEach(modelName => {
+            const mLoader = document.getElementById('loader');
+            if (mLoader) mLoader.style.display = 'block';
+
+            console.log(`Loading context model: ${modelName}`);
+
+            // Try fetching from public/files first (assuming they are dropped in appserver/src/files)
+            loader.load(`/files/${modelName}`, function (object) {
+              object.name = 'default_geo';
+              // Standard Rhino-to-Three.js rotation
+              object.rotation.x = -Math.PI / 2;
+              scene.add(object);
+              console.log(`Loaded context model: ${modelName}`);
+              if (mLoader) mLoader.style.display = 'none';
+            }, undefined, function (error) {
+              console.warn(`Failed to load context model: ${modelName}`, error);
+              if (mLoader) mLoader.style.display = 'none';
+            });
+          });
+        });
+      }
+
       // Camera
       camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 10000);
       if (rawDefinition.camera && rawDefinition.camera.position) {
@@ -695,7 +747,45 @@
       const wrapper = document.createElement('div');
       wrapper.className = 'control-group';
 
-      if (param.paramType === 'Integer' || param.paramType === 'Number') {
+      // Check if this parameter has a dropdown override specified in sidecar JSON
+      let dropdownConfig = null;
+      if (rawDefinition.dropdowns && rawDefinition.dropdowns[param.name]) {
+        dropdownConfig = rawDefinition.dropdowns[param.name];
+      }
+
+      if (dropdownConfig) {
+        // --- DROPDOWN RENDER ---
+        const label = document.createElement('label');
+        label.innerText = param.name;
+        wrapper.appendChild(label);
+
+        // We assume dropdownConfig is an object { "Choice A": 0, "Choice B": 1 }
+        const select = document.createElement('select');
+        select.className = 'select select-bordered w-full';
+        select.style.marginTop = '8px';
+
+        let initialVal = param.default !== undefined ? Number(param.default) : Object.values(dropdownConfig)[0];
+        inputs[param.name] = initialVal;
+
+        for (const [key, value] of Object.entries(dropdownConfig)) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.innerText = key;
+          if (value === initialVal) {
+            option.selected = true;
+          }
+          select.appendChild(option);
+        }
+
+        select.addEventListener('change', (e) => {
+          inputs[param.name] = Number(e.target.value);
+          if (liveCompute) triggerSolve();
+        });
+
+        wrapper.appendChild(select);
+
+      } else if (param.paramType === 'Integer' || param.paramType === 'Number') {
+        // --- STANDARD NUMBER/SLIDER RENDER ---
         const label = document.createElement('label');
         label.innerText = param.name;
         wrapper.appendChild(label);
@@ -901,6 +991,60 @@
         const layerKeyContainer = document.getElementById('layer-key-container');
         let totalFailedToLoad = 0;
 
+        // Helper: read a color list from rhino3dm and normalize to 0-1 floats.
+        // rhino3dm may return colors in various formats depending on version:
+        //   - Object: { r, g, b, a }
+        //   - Array:  [r, g, b, a]
+        //   - Packed int (ARGB): 0xAARRGGBB
+        const normalizeRhinoColors = (colorList, count) => {
+          // Inspect the first entry to figure out the format
+          const sample = colorList.get(0);
+          console.log('[VertexColor] first color sample:', JSON.stringify(sample), 'type:', typeof sample);
+
+          // Extractor function based on detected format
+          let extract;
+          if (sample !== null && typeof sample === 'object' && 'r' in sample) {
+            // Object with named properties { r, g, b, a }
+            extract = c => [c.r, c.g, c.b];
+          } else if (Array.isArray(sample)) {
+            // Plain array [r, g, b, a]
+            extract = c => [c[0], c[1], c[2]];
+          } else if (typeof sample === 'number') {
+            // Packed ARGB integer — extract with bit shifts (0-255)
+            extract = c => [(c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF];
+          } else {
+            // Last resort: try common property names
+            console.warn('[VertexColor] Unknown color format, keys:', sample ? Object.keys(sample) : 'null');
+            extract = c => {
+              if (c && typeof c === 'object') {
+                const r = c.r ?? c.R ?? c[0] ?? 0;
+                const g = c.g ?? c.G ?? c[1] ?? 0;
+                const b = c.b ?? c.B ?? c[2] ?? 0;
+                return [r, g, b];
+              }
+              return [0, 0, 0];
+            };
+          }
+
+          const raw = [];
+          let maxVal = 0;
+          for (let i = 0; i < count; i++) {
+            const c = colorList.get(i);
+            const [r, g, b] = extract(c);
+            raw.push([r, g, b]);
+            maxVal = Math.max(maxVal, r, g, b);
+          }
+
+          // Auto-detect scale: if any component > 1 the values are 0-255
+          const scale = maxVal > 1.0 ? 1 / 255 : 1.0;
+          console.log(`[VertexColor] count=${count}, maxVal=${maxVal.toFixed(3)}, scale=${scale === 1 ? '1 (already float)' : '1/255'}`);
+          const out = [];
+          for (const [r, g, b] of raw) {
+            out.push(r * scale, g * scale, b * scale);
+          }
+          return out;
+        };
+
         // Helper to convert rhino mesh to THREE mesh
         const rhinoMeshToThreejs = (mesh, material) => {
           try {
@@ -929,7 +1073,59 @@
             geo.setIndex(indices);
             geo.computeVertexNormals();
 
-            const threeMesh = new THREE.Mesh(geo, material);
+            // Check for per-vertex or per-face colors (e.g. solar radiation analysis)
+            let resolvedMaterial = material;
+            const vcList = mesh.vertexColors();
+            const vcCount = vcList ? vcList.count : 0;
+
+            if (vcCount > 0) {
+              console.log(`[Mesh] vertexCount=${count}, faceCount=${fcount}, vertexColorCount=${vcCount}`);
+
+              let colorArray = null;
+
+              if (vcCount === count) {
+                // Standard per-vertex colors
+                colorArray = normalizeRhinoColors(vcList, vcCount);
+              } else if (vcCount === fcount) {
+                // Per-face colors: expand to per-vertex by painting each vertex
+                // with the color of the last face that references it.
+                console.log('[Mesh] Detected per-face colors — expanding to per-vertex');
+                const faceColors = normalizeRhinoColors(vcList, vcCount);
+                // Build a per-vertex color array (3 floats per vertex)
+                colorArray = new Array(count * 3).fill(0);
+                for (let fi = 0; fi < fcount; fi++) {
+                  const face = faces.get(fi);
+                  const r = faceColors[fi * 3], g = faceColors[fi * 3 + 1], b = faceColors[fi * 3 + 2];
+                  // Triangle 0-1-2
+                  for (const vi of [face[0], face[1], face[2]]) {
+                    colorArray[vi * 3]     = r;
+                    colorArray[vi * 3 + 1] = g;
+                    colorArray[vi * 3 + 2] = b;
+                  }
+                  // Quad second triangle
+                  if (face[2] !== face[3]) {
+                    for (const vi of [face[2], face[3], face[0]]) {
+                      colorArray[vi * 3]     = r;
+                      colorArray[vi * 3 + 1] = g;
+                      colorArray[vi * 3 + 2] = b;
+                    }
+                  }
+                }
+              } else {
+                console.warn(`[Mesh] vertexColorCount (${vcCount}) doesn't match vertices (${count}) or faces (${fcount}) — skipping colors`);
+              }
+
+              if (vcList) vcList.delete();
+
+              if (colorArray) {
+                geo.setAttribute('color', new THREE.Float32BufferAttribute(colorArray, 3));
+                resolvedMaterial = material.clone();
+                resolvedMaterial.vertexColors = true;
+                resolvedMaterial.color.set(0xffffff); // neutral so vertex colors show true
+              }
+            }
+
+            const threeMesh = new THREE.Mesh(geo, resolvedMaterial);
 
             vertices.delete();
             faces.delete();
@@ -1083,7 +1279,26 @@
                     const geo = loader.parse(json);
 
                     if (rhinoObject.type && rhinoObject.type.includes("Mesh")) {
-                      threeObj = new THREE.Mesh(geo, meshMaterial);
+                      // If the geometry JSON already carries per-vertex colors, honour them
+                      let nativeMeshMat = meshMaterial;
+                      if (geo.attributes.color) {
+                        // Validate color range — some versions store 0-255 instead of 0-1
+                        const colArr = geo.attributes.color.array;
+                        let cMax = 0;
+                        for (let ci = 0; ci < Math.min(colArr.length, 300); ci++) cMax = Math.max(cMax, colArr[ci]);
+                        console.log(`[toThreejsJSON Mesh] has color attr, sample max=${cMax.toFixed(3)}, length=${colArr.length}`);
+                        if (cMax > 1.0) {
+                          // Normalize in-place
+                          for (let ci = 0; ci < colArr.length; ci++) colArr[ci] /= 255;
+                          geo.attributes.color.needsUpdate = true;
+                        }
+                        nativeMeshMat = meshMaterial.clone();
+                        nativeMeshMat.vertexColors = true;
+                        nativeMeshMat.color.set(0xffffff);
+                      } else {
+                        console.log('[toThreejsJSON Mesh] no color attribute — using palette color');
+                      }
+                      threeObj = new THREE.Mesh(geo, nativeMeshMat);
                     } else {
                       // Fallback for raw JSON conversion to lines, though rare
                       const lineGeo = new LineGeometry();
@@ -1180,13 +1395,13 @@
             summaryStrParts.push(`${count} ${t}`);
           }
           if (summaryStrParts.length > 0) {
-            appendToOutputLog(paramName, summaryStrParts.join(", "));
+            console.log(`[Solve] ${paramName}: ${summaryStrParts.join(", ")}`);
           }
         });
 
         // Add overall status tally
         if (totalSuccessfullyLoaded > 0 || totalFailedToLoad > 0) {
-          appendToOutputLog("", `${totalSuccessfullyLoaded} items successfully loaded, ${totalFailedToLoad} items failed to load.`);
+          console.log(`[Solve] ${totalSuccessfullyLoaded} items successfully loaded, ${totalFailedToLoad} items failed to load.`);
         }
       });
     }
