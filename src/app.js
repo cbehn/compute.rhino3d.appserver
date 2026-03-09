@@ -43,6 +43,7 @@ app.use('/solve', (req, res, next) => {
 // Route to manually wake up the VM
 app.post('/wakeup', async (req, res) => {
   try {
+    azureService.touchActivity(); // Update last activity on wake up call
     const result = await azureService.startVM();
     res.status(result.status).json({ message: result.message, error: result.error });
   } catch (err) {

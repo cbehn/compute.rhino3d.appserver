@@ -39,7 +39,14 @@ function formatInputs(inputs) {
   return values
 }
 
+// How long (ms) to wait for Rhino Compute to respond.
+// Solar radiation solves can take 60-90 s, so give a generous 120 s.
+const COMPUTE_TIMEOUT_MS = 120_000;
+
 router.post('/', async (req, res, next) => {
+  // Extend the socket timeout so Express/Node doesn't drop the connection
+  // before Rhino Compute finishes. Add 10 s on top of the fetch timeout.
+  res.socket && res.socket.setTimeout(COMPUTE_TIMEOUT_MS + 10_000);
   const data = req.body
   const definitionName = data.definition
 
@@ -90,14 +97,26 @@ router.post('/', async (req, res, next) => {
       try {
         console.log(`Solving ${definitionName} (Attempt ${attempts + 1})...`)
 
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'RhinoComputeKey': apiKey
-          },
-          body: JSON.stringify(requestBody)
-        })
+        // Use an AbortController so we can set an explicit timeout.
+        // node-fetch v2 doesn't support the built-in signal natively in all
+        // versions, but passing it works for the common installed version.
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), COMPUTE_TIMEOUT_MS);
+
+        let response;
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'RhinoComputeKey': apiKey
+            },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
 
         // If the Compute Server returns a logic error (like 500), we throw it here
         if (!response.ok) {
@@ -120,6 +139,11 @@ router.post('/', async (req, res, next) => {
 
       } catch (err) {
         // Check if this is a network error (meaning the server is down/unreachable)
+        // Also treat AbortError (our timeout) as a network-class error so it shows
+        // a clear message rather than trying to wake the VM.
+        if (err.name === 'AbortError') {
+          throw new Error(`Rhino Compute did not respond within ${COMPUTE_TIMEOUT_MS / 1000}s. The solve may still be running on the server — try again or reduce the complexity of the calculation.`);
+        }
         const isNetworkError = err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.type === 'system';
 
         // If it's a network error and we haven't retried yet...
