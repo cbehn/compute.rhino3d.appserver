@@ -6,7 +6,7 @@ import { renderComputeControls, renderViewControls, showStartupOverlayAndWait } 
 // --- CONFIGURATION ---
 // IMPORTANT: This dictates the default definition loaded on startup.
 // Update this value when you publish a new version of the GH script.
-const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.9.1.gh';
+const DEFAULT_DEFINITION_NAME = 'cncProfiler-v0.11.1.gh';
 
 // --- GLOBALS ---
 let currentDefinition = null;
@@ -182,19 +182,22 @@ async function loadDefinition(name) {
 
         container.innerHTML = '';
 
+        const isDxfParam = (n) => n === 'b64DXF' || n === 'DXF';
+
         const sortedInputs = metadata.inputs.sort((a, b) => {
-            if (a.name === 'b64DXF') return -1;
-            if (b.name === 'b64DXF') return 1;
+            if (isDxfParam(a.name)) return -1;
+            if (isDxfParam(b.name)) return 1;
             return 0;
         });
 
         // 1. Create controls and populate initial 'inputs' object
-        sortedInputs.forEach(param => createControl(param));
+        sortedInputs.forEach(param => createControl(param, metadata.dropdowns));
 
         // 2. Pre-load default DXF if this definition requires a DXF and we have a default
-        if (inputs.hasOwnProperty('b64DXF') && !inputs['b64DXF'] && defaultDxfB64) {
-            inputs['b64DXF'] = defaultDxfB64;
-            console.log("Used Template.dxf for initial inputs");
+        const dxfParam = sortedInputs.find(p => isDxfParam(p.name));
+        if (dxfParam && !inputs[dxfParam.name] && defaultDxfB64) {
+            inputs[dxfParam.name] = defaultDxfB64;
+            console.log(`Used Template.dxf for initial ${dxfParam.name} input`);
         }
 
         // 3. Automatically trigger first solve
@@ -222,7 +225,8 @@ function disableDownload() {
 async function triggerSolve() {
     if (!currentDefinition) return;
 
-    if (inputs.hasOwnProperty('b64DXF') && !inputs['b64DXF']) {
+    const dxfKey = Object.keys(inputs).find(k => k === 'b64DXF' || k === 'DXF');
+    if (dxfKey && !inputs[dxfKey]) {
         console.log("Waiting for DXF upload before solving...");
         return;
     }
@@ -545,6 +549,28 @@ function handleResponse(data) {
                 }
                 break;
 
+            case '_Layers':
+                const layerStrings = extractStrings(tree);
+                if (layerStrings && layerStrings.length > 0) {
+                    const t1Select = document.getElementById('select_T1_Layer');
+                    if (t1Select) {
+                        const currentVal = t1Select.value;
+                        t1Select.innerHTML = '';
+                        layerStrings.forEach(layer => {
+                            let cleanLayer = typeof layer === 'string' && layer.startsWith('"') && layer.endsWith('"')
+                                ? layer.slice(1, -1) : String(layer);
+                            const opt = document.createElement('option');
+                            opt.value = cleanLayer;
+                            opt.innerText = cleanLayer;
+                            if (cleanLayer === currentVal || (!currentVal && cleanLayer === 'Outside')) {
+                                opt.selected = true;
+                            }
+                            t1Select.appendChild(opt);
+                        });
+                    }
+                }
+                break;
+
             default:
                 // Optional: Handle other named outputs if needed
                 break;
@@ -556,11 +582,13 @@ function handleResponse(data) {
 //                     UI BUILDER
 // =========================================================
 
-function createControl(param) {
+function createControl(param, dropdowns) {
     const wrapper = document.createElement('div');
     wrapper.className = 'control-group';
 
-    if (param.name === 'b64DXF') {
+    const isDxf = (param.name === 'b64DXF' || param.name === 'DXF');
+
+    if (isDxf) {
         const uploadWrapper = document.createElement('div');
         uploadWrapper.className = 'upload-btn-wrapper';
 
@@ -606,6 +634,71 @@ function createControl(param) {
         uploadWrapper.appendChild(fileInput);
         wrapper.appendChild(uploadWrapper);
 
+    } else if (dropdowns && dropdowns[param.name]) {
+        // --- Dropdown Select Control ---
+        const label = document.createElement('label');
+        label.innerText = param.name;
+
+        if (param.description) {
+            const icon = document.createElement('span');
+            icon.className = 'help-icon';
+            icon.innerText = '?';
+            icon.setAttribute('data-tooltip', param.description);
+            label.appendChild(icon);
+        }
+        wrapper.appendChild(label);
+
+        const select = document.createElement('select');
+        select.className = 'dropdown-select';
+        select.id = `select_${param.name.replace(/\s+/g, '_')}`;
+
+        const optionsMap = dropdowns[param.name];
+        let defaultVal = param.default;
+
+        // For T1_Layer, prefer "Outside" if available as default for Template.dxf
+        if (param.name === 'T1_Layer' && optionsMap['Outside'] !== undefined) {
+            defaultVal = 'Outside';
+        }
+
+        // Clean quotes from default string if any
+        if (typeof defaultVal === 'string' && defaultVal.startsWith('"') && defaultVal.endsWith('"')) {
+            defaultVal = defaultVal.slice(1, -1);
+        }
+
+        let matchedValue = undefined;
+
+        Object.entries(optionsMap).forEach(([optLabel, optVal]) => {
+            const option = document.createElement('option');
+            option.value = optVal;
+            option.innerText = optLabel;
+
+            if (String(optVal) === String(defaultVal) || optLabel === String(defaultVal)) {
+                option.selected = true;
+                matchedValue = optVal;
+            }
+            select.appendChild(option);
+        });
+
+        if (matchedValue === undefined) {
+            const firstVal = Object.values(optionsMap)[0];
+            matchedValue = firstVal;
+        }
+
+        const isInt = (param.paramType === 'Integer');
+        const isNum = (param.paramType === 'Number');
+        inputs[param.name] = isInt ? parseInt(matchedValue, 10) : (isNum ? parseFloat(matchedValue) : matchedValue);
+
+        select.addEventListener('change', (e) => {
+            let val = e.target.value;
+            if (isInt) val = parseInt(val, 10);
+            else if (isNum) val = parseFloat(val);
+            inputs[param.name] = val;
+            disableDownload();
+            if (liveCompute) triggerSolve();
+        });
+
+        wrapper.appendChild(select);
+
     } else if (param.paramType === 'Integer' || param.paramType === 'Number') {
         const label = document.createElement('label');
         label.innerText = param.name;
@@ -648,7 +741,7 @@ function createControl(param) {
         valDisplay.innerText = defaultValue;
         label.appendChild(valDisplay);
 
-        const hasMinMax = (param.minimum !== null && param.maximum !== null);
+        const hasMinMax = (param.minimum !== null && param.minimum !== undefined && param.maximum !== null && param.maximum !== undefined);
         let slider = null;
 
         if (hasMinMax) {
@@ -700,7 +793,7 @@ function createControl(param) {
         const toggle = document.createElement('div');
         toggle.className = 'toggle';
 
-        const defaultState = param.default === true;
+        const defaultState = (param.default === true || param.default === 'true');
         inputs[param.name] = defaultState;
 
         // --- UPDATED: Hops Custom Labels with Z0 Override ---
@@ -724,6 +817,45 @@ function createControl(param) {
             if (liveCompute) triggerSolve();
         };
         wrapper.appendChild(toggle);
+
+    } else if (param.paramType === 'Text' || param.paramType === 'String') {
+        const label = document.createElement('label');
+        label.innerText = param.name;
+
+        if (param.description) {
+            const icon = document.createElement('span');
+            icon.className = 'help-icon';
+            icon.innerText = '?';
+            icon.setAttribute('data-tooltip', param.description);
+            label.appendChild(icon);
+        }
+        wrapper.appendChild(label);
+
+        let defaultVal = param.default !== undefined && param.default !== null ? String(param.default) : '';
+        if (defaultVal.startsWith('"') && defaultVal.endsWith('"')) {
+            defaultVal = defaultVal.slice(1, -1);
+        }
+        if (param.name === 'T1_Layer' && (!defaultVal || defaultVal.includes('CNC - Interior Profile'))) {
+            defaultVal = 'Outside';
+        }
+
+        inputs[param.name] = defaultVal;
+
+        const textInput = document.createElement('input');
+        textInput.type = 'text';
+        textInput.className = 'text-input';
+        textInput.value = defaultVal;
+
+        textInput.addEventListener('input', (e) => {
+            inputs[param.name] = e.target.value;
+            disableDownload();
+        });
+        textInput.addEventListener('change', () => {
+            if (liveCompute) triggerSolve();
+        });
+
+        wrapper.appendChild(textInput);
+
     } else {
         const label = document.createElement('label');
         label.innerText = param.name;

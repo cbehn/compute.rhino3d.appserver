@@ -1,0 +1,39 @@
+{
+    "dropdowns": {
+        "Stock Z0": {
+            "Top": 1,
+            "Center": 0,
+            "Bottom": -1
+        },
+        "Stock Y0": {
+            "Back": 1,
+            "Middle": 0,
+            "Front": -1
+        },
+        "Stock X0": {
+            "Right": 1,
+            "Middle": 0,
+            "Left": -1
+        },
+        "Part to Stock Z": {
+            "Top": 1,
+            "Center": 0,
+            "Bottom": -1
+        },
+        "Part to Stock Y": {
+            "Back": 1,
+            "Middle": 0,
+            "Front": -1
+        },
+        "Part to Stock X": {
+            "Right": 1,
+            "Middle": 0,
+            "Left": -1
+        },
+        "T1_Layer": {
+            "Outside": "Outside",
+            "Inside": "Inside",
+            "Center": "Center"
+        }
+    }
+}

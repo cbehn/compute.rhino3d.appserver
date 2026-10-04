@@ -1,0 +1,16 @@
+.gcloudignore
+.git
+.gitignore
+node_modules/
+**/node_modules/
+.env*
+*.secret
+*.token
+*.pem
+*.key
+*.log
+.DS_Store
+**/.DS_Store
+.vscode/
+.antigravity/
+.system_generated/

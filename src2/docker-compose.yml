@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # Container 1: CoLab CNC Setup Tool Web Server
+  cnc-web:
+    build:
+      context: ./web-server
+      dockerfile: Dockerfile
+    container_name: cnc-web-server
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - RHINO_COMPUTE_URL=http://rhino-compute:80/
+      - RHINO_COMPUTE_KEY=${RHINO_COMPUTE_KEY:-0bb5131f-1dc8-46c0-9c52-e3bf0b7c83a6}
+      - NODE_ENV=development
+    depends_on:
+      - rhino-compute
+    restart: unless-stopped
+
+  # Container 2: Rhino Compute on Linux with Grasshopper Plugins
+  rhino-compute:
+    platform: linux/amd64
+    build:
+      context: ./rhino-compute
+      dockerfile: Dockerfile
+    container_name: rhino-compute-linux
+    ports:
+      - "6500:80"
+    environment:
+      - PORT=80
+      - RHINO_TOKEN=${RHINO_TOKEN:-}
+      - RHINO_COMPUTE_KEY=${RHINO_COMPUTE_KEY:-0bb5131f-1dc8-46c0-9c52-e3bf0b7c83a6}
+    restart: unless-stopped

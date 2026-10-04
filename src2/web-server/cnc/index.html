@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>CoLab CNC Setup Tool</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div id="info-toggle" title="Help & Logs">ℹ️</div>
+
+    <div id="info-panel">
+        <button class="info-close" id="close-info">&times;</button>
+        <h1>CNC Tool Info</h1>
+
+        <p><strong>Color Key:</strong></p>
+        <ul class="color-key-list">
+            <li class="color-key-item">
+                <div class="color-swatch" style="background:black;"></div> <span>Imported DXF</span>
+            </li>
+            <li class="color-key-item">
+                <div class="color-swatch" style="background:#00FFFF;"></div> <span>Cut Path</span>
+            </li>
+            <li class="color-key-item">
+                <div class="color-swatch" style="background:#FF0000;"></div> <span>Bad Lines (Open)</span>
+            </li>
+            <li class="color-key-item">
+                <div class="color-swatch" style="background:#FF00FF;"></div> <span>Unused Lines</span>
+            </li>
+        </ul>
+
+        <div class="demo-gif-container">
+            <img src="files/demo.gif" alt="CNC Profiler Demo">
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+
+        <div id="log-wrapper">
+            <details id="log-container" open>
+                <summary>System Log</summary>
+                <div id="log-content">Ready.</div>
+            </details>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <a href="https://github.com/cbehn/compute.rhino3d.appserver/tree/prod" target="_blank" class="info-btn"
+                style="background: #333; color: white;">GitHub Repo</a>
+        </div>
+    </div>
+
+    <div id="value-modal">
+        <div class="modal-content">
+            <div class="modal-title" id="modalTitle">Set Value</div>
+            <input type="number" id="modalInput" step="any">
+            <div class="modal-buttons">
+                <button class="btn-modal btn-cancel" id="modalCancelBtn">Cancel</button>
+                <button class="btn-modal btn-save" id="modalSaveBtn">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="container">
+        <div id="left-panel">
+            <h2>CoLab CNC Setup Tool</h2>
+
+            <div id="file-select-container">
+                <label for="definitionSelect">Select Definition:</label>
+                <select id="definitionSelect">
+                    <option value="" disabled selected>Choose a file...</option>
+                </select>
+                <div style="text-align: right; margin-top: 5px;">
+                    <a href="files/Template.dxf" download id="download-template-link">
+                        ⬇ Download Template.dxf
+                    </a>
+                </div>
+            </div>
+
+            <div id="compute-container"></div>
+
+            <div id="controls-container">
+                <p style="color:#888; text-align: center;">Select a definition to begin.</p>
+            </div>
+
+            <div id="loader">Processing... ⚙️</div>
+        </div>
+
+        <div id="canvas-container"></div>
+
+        <div id="right-stack">
+
+            <div id="view-controls-container" style="position: relative; height: 50px;"></div>
+
+            <pre id="gcode-preview"></pre>
+            <button id="downloadBtn" disabled>Download GCode</button>
+
+            <div id="warning-container"></div>
+        </div>
+
+    </div>
+
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.156.1/build/three.module.js",
+                "three/examples/jsm/controls/OrbitControls": "https://unpkg.com/three@0.156.1/examples/jsm/controls/OrbitControls.js",
+                "three/examples/jsm/loaders/3DMLoader": "https://unpkg.com/three@0.156.1/examples/jsm/loaders/3DMLoader.js",
+                "rhino3dm":"https://unpkg.com/rhino3dm@8.4.0/rhino3dm.module.js",
+                "ui_components": "/public/js/ui-components.js"
+            }
+        }
+    </script>
+    <script type="module" src="script.js"></script>
+
+    <script>
+        window.snapView = (view) => {
+            window.dispatchEvent(new CustomEvent('snap-view', { detail: view }));
+        };
+    </script>
+</body>
+
+</html>

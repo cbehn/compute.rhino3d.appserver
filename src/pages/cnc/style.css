@@ -76,6 +76,24 @@ input[type=text] {
     box-sizing: border-box;
 }
 
+select.dropdown-select,
+input.text-input {
+    width: 100%;
+    padding: 7px 10px;
+    font-size: 0.9em;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #fff;
+    color: #333;
+    box-sizing: border-box;
+}
+
+select.dropdown-select:focus,
+input.text-input:focus {
+    border-color: #2196F3;
+    outline: none;
+}
+
 /* Tooltip Icon Styles */
 .help-icon {
     display: inline-block;

@@ -24,19 +24,17 @@ function extractDefaultValue(rawDefault) {
   if (rawDefault === undefined || rawDefault === null) return undefined;
 
   // 2. Handle standard Rhino DataTree structure
-  // Expected: { InnerTree: { "{0}": [ { type: "...", data: "..." } ] } }
-  if (rawDefault.InnerTree) {
+  if (rawDefault && typeof rawDefault === 'object' && rawDefault.InnerTree) {
     const branches = Object.values(rawDefault.InnerTree);
-
-    // Check if we have at least one branch with data
-    if (branches.length > 0 && branches[0].length > 0) {
-      const item = branches[0][0];
-      // Return the raw data string (e.g., "0.15", "5", "True")
-      return item.data;
+    for (const branch of branches) {
+      if (Array.isArray(branch) && branch.length > 0 && branch[0].data !== undefined) {
+        return branch[0].data;
+      }
     }
+    return undefined;
   }
 
-  // 3. Fallback: If it's already a simple value (unlikely with standardized Hops, but possible)
+  // 3. Fallback: If it's already a simple value
   return rawDefault;
 }
 
@@ -63,7 +61,16 @@ function castValue(value, paramType) {
     return s === 'true';
   }
 
-  // 4. Default: Return as string
+  // 4. Strings
+  if (type === 'string' || type === 'text' || type === 'system.string') {
+    let str = String(value);
+    if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+      str = str.slice(1, -1);
+    }
+    return str;
+  }
+
+  // 5. Default
   return value;
 }
 

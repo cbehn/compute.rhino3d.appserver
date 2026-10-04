@@ -1,0 +1,24 @@
+{
+  "name": "cnc-web-appserver",
+  "version": "1.0.0",
+  "description": "Google Cloud containerized web server for CoLab CNC Setup Tool and Rhino Compute integration",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "compression": "^1.7.5",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "md5-file": "^5.0.0",
+    "morgan": "^1.10.0",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
